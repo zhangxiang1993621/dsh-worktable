@@ -256,7 +256,17 @@ export function apply(ctx: Context) {
     return
   }
 
-  webServer.register({
+  // HTTP 路由的 disposer 必须随本插件行的 fiber 一起注销：行被禁用（fiber 销毁）后
+  // 路由若还挂在 webserver 上，再次启用会命中 duplicate exact route 而激活失败。
+  const routeDisposers = []
+  const registerRoute = (route) => { routeDisposers.push(webServer.register(route)) }
+  ctx.effect(() => () => {
+    for (const dispose of routeDisposers.splice(0)) {
+      try { dispose() } catch {}
+    }
+  }, 'dsh-worktable: http routes')
+
+  registerRoute({
     kind: 'exact',
     path: HEALTH_PATH,
     handler: (_req: any, res: any) => {
@@ -265,7 +275,7 @@ export function apply(ctx: Context) {
   })
 
   // 本地文件读取（资源管理器点击 .html 后浏览器标签内打开）
-  webServer.register({
+  registerRoute({
     kind: 'exact',
     path: '/api/worktable/file',
     handler: async (req: any, res: any) => {
@@ -295,7 +305,7 @@ export function apply(ctx: Context) {
   // 本地站点（目录级静态托管）：点开 index.html 时挂载整个所在目录，
   // 让 ./assets/... 等相对引用正常解析（前缀路由，余下路径 = <rootToken>/<相对路径>）。
   // 原生皮肤模板：HTML 骨架 + 设计系统样式表（随插件分发，主题自动适配）
-  webServer.register({
+  registerRoute({
     kind: 'prefix',
     path: TEMPLATE_PREFIX,
     handler: (req: any, res: any) => {
@@ -316,7 +326,7 @@ export function apply(ctx: Context) {
     },
   })
 
-  webServer.register({
+  registerRoute({
     kind: 'prefix',
     path: SITE_PREFIX,
     handler: async (req: any, res: any) => {
@@ -348,7 +358,7 @@ export function apply(ctx: Context) {
     },
   })
 
-  webServer.register({
+  registerRoute({
     kind: 'exact',
     path: '/api/worktable/fs',
     handler: async (req: any, res: any) => {
@@ -368,7 +378,7 @@ export function apply(ctx: Context) {
   // 优先走宿主正式服务 ctx.workspaceRegistry（0.1.1/0.1.2 均有，正确感知 DSH_HOME 与存储后端）；
   // 不可用时回退按 resolveDshHomeSafe() 读 storages/workspace.json（只读）。
   // 返回结构是客户端契约，两种来源都映射成同一 shape。
-  webServer.register({
+  registerRoute({
     kind: 'exact',
     path: '/api/worktable/workspaces',
     handler: async (_req: any, res: any) => {
@@ -412,7 +422,7 @@ export function apply(ctx: Context) {
   })
 
   // 本地文件写入（MD 编辑模式保存回磁盘）
-  webServer.register({
+  registerRoute({
     kind: 'exact',
     path: '/api/worktable/write',
     handler: async (req: any, res: any) => {
@@ -433,7 +443,7 @@ export function apply(ctx: Context) {
   })
 
   // 新建分组：创建目录（仅当父目录已存在，避免递归误建深层垃圾目录）
-  webServer.register({
+  registerRoute({
     kind: 'exact',
     path: '/api/worktable/mkdir',
     handler: async (req: any, res: any) => {
@@ -454,7 +464,7 @@ export function apply(ctx: Context) {
     },
   })
 
-  webServer.register({
+  registerRoute({
     kind: 'exact',
     path: '/api/worktable/git',
     handler: async (req: any, res: any) => {
