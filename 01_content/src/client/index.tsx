@@ -679,25 +679,46 @@ function lastTextOf(sid: string): string {
   return ''
 }
 
+/**
+ * 子代理会话 id 集：origin 标注 + subagentsByParent 目录双通道。
+ * 判定与宿主侧栏一致（ui-workspace/src/client/tree.ts:146 用 `session.origin !== 'subagent'` 过滤）。
+ * 子代理会话用户面板看不到，且用普通会话地址读它的历史会被宿主拒绝（session/agent-busy），
+ * 因此任何"给用户挑会话"的列表以及任何 sessions.open 目标都必须先过这一层。
+ */
+function subagentSessionIds(snap: any): Set<string> {
+  const kids = new Set<string>()
+  try {
+    const byId = snap?.byId ?? {}
+    for (const [id, node] of Object.entries<any>(byId)) {
+      if (node && node.origin === 'subagent') kids.add(id)
+    }
+    const map = snap?.subagentsByParent ?? {}
+    for (const k of Object.keys(map)) {
+      const v = map[k]
+      const arr = Array.isArray(v) ? v : (v?.entries ?? v?.items ?? v?.children ?? [])
+      if (!Array.isArray(arr)) continue
+      for (const c of arr) {
+        const cid = c?.sessionId ?? c?.id
+        if (typeof cid === 'string') kids.add(cid)
+      }
+    }
+  } catch {}
+  return kids
+}
+
+/** 该会话是否子代理会话（用普通地址打开它会被宿主拒绝，控制室/项目绑定必须避开）。 */
+function isSubagentSessionId(sid: string): boolean {
+  try { return subagentSessionIds(sessionBridge?.list?.getSnapshot?.()).has(sid) } catch { return false }
+}
+
 /** 会话分组列表（模块级，供自定义窗会话选择与对话绑定弹窗共用） */
 async function fetchSessionGroups(): Promise<{ groups: { title: string; sessions: { id: string; title: string; isCurrent: boolean }[] }[]; current: string }> {
   try {
     const snap = sessionBridge?.list?.getSnapshot?.()
     const byId = snap?.byId ?? {}
     const current = snap?.current ?? ''
-    // 子代理会话（后台产生的，用户面板看不到）排除
-    const subKids = new Set<string>()
-    try {
-      const map = snap?.subagentsByParent ?? {}
-      for (const k of Object.keys(map)) {
-        const v = map[k]
-        const arr = Array.isArray(v) ? v : (v?.entries ?? v?.items ?? [])
-        if (Array.isArray(arr)) arr.forEach((c: any) => {
-          const cid = c?.sessionId ?? c?.id
-          if (typeof cid === 'string') subKids.add(cid)
-        })
-      }
-    } catch {}
+    // 子代理会话（后台产生的，用户面板看不到）排除：origin 标注 + 目录双通道
+    const subKids = subagentSessionIds(snap)
     const titleOf = (sid: string) => byId[sid]?.title ?? byId[sid]?.displayTitle ?? sid
     const mk = (sid: string) => ({ id: sid, title: titleOf(sid), isCurrent: sid === current })
     // 工作区分组：服务端读宿主 workspace.json（含 archived 排除），按用户面板结构分组；
@@ -1726,7 +1747,8 @@ function buildCustomLayoutPrompt(req: string): string {
       projectAttachRef.sessionId = prev
       projectAttachRef.attached = projectsRef.current.projects.bindings[spec.id] ?? prev
       const bound = projectsRef.current.projects.bindings[spec.id]
-      if (bound) { try { sessionBridge?.sessions?.open?.(bound) } catch {} }
+      // 绑定若指向子代理会话（用户面板看不到它，普通地址读历史会被宿主拒 session/agent-busy），视为无绑定
+      if (bound && !isSubagentSessionId(bound)) { try { sessionBridge?.sessions?.open?.(bound) } catch {} }
       ackProjectNotify(spec.id)
       // 补挂：此前项目未打开时暂存的产物（entries = 多窗口挂载列表），现在自动挂进各目标窗格；
       // 全部落位成功记录指纹（供自愈扫挂去重）
@@ -1762,7 +1784,9 @@ function buildCustomLayoutPrompt(req: string): string {
       let prev: string | null = null
       try { prev = sessionBridge?.list?.getSnapshot?.()?.current ?? null } catch {}
       projectAttachRef.sessionId = prev
-      const bound = explicitBound !== undefined ? explicitBound : projectsRef.current.projects.bindings[CONSOLE_ID]
+      const raw = explicitBound !== undefined ? explicitBound : projectsRef.current.projects.bindings[CONSOLE_ID]
+      // 同上：控制室历史版本可能绑到了子代理会话 → 视为无绑定，避免每次打开都报「历史加载失败」
+      const bound = raw && !isSubagentSessionId(raw) ? raw : null
       projectAttachRef.attached = bound ?? prev
       if (bound) { try { sessionBridge?.sessions?.open?.(bound) } catch {} }
       ackProjectNotify(CONSOLE_ID)
@@ -1774,7 +1798,16 @@ function buildCustomLayoutPrompt(req: string): string {
 
   /** 控制室卡片点击：已绑定 → 打开控制室；未绑定 → 强制绑定弹窗 */
   const clickConsoleCard = (anchor: HTMLElement) => {
-    if (projectsRef.current.projects.bindings[CONSOLE_ID]) { openConsole(); return }
+    const stored = projectsRef.current.projects.bindings[CONSOLE_ID]
+    // 自愈：绑定指向子代理会话 → 解绑并重新走绑定流程（否则用户会一直卡在「历史加载失败」）
+    if (stored && isSubagentSessionId(stored)) {
+      persistProjects((prev) => {
+        const bindings = { ...prev.bindings }
+        delete (bindings as any)[CONSOLE_ID]
+        return { ...prev, bindings }
+      })
+    }
+    if (stored && !isSubagentSessionId(stored)) { openConsole(); return }
     const r = anchor.getBoundingClientRect()
     setConsoleBind({
       x: clamp(Math.round(r.right + 8), 8, window.innerWidth - 640),

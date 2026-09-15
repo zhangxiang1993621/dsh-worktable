@@ -20652,24 +20652,40 @@ function lastTextOf(sid) {
   }
   return "";
 }
+function subagentSessionIds(snap) {
+  const kids = /* @__PURE__ */ new Set();
+  try {
+    const byId = snap?.byId ?? {};
+    for (const [id, node] of Object.entries(byId)) {
+      if (node && node.origin === "subagent") kids.add(id);
+    }
+    const map2 = snap?.subagentsByParent ?? {};
+    for (const k of Object.keys(map2)) {
+      const v = map2[k];
+      const arr = Array.isArray(v) ? v : v?.entries ?? v?.items ?? v?.children ?? [];
+      if (!Array.isArray(arr)) continue;
+      for (const c of arr) {
+        const cid = c?.sessionId ?? c?.id;
+        if (typeof cid === "string") kids.add(cid);
+      }
+    }
+  } catch {
+  }
+  return kids;
+}
+function isSubagentSessionId(sid) {
+  try {
+    return subagentSessionIds(sessionBridge?.list?.getSnapshot?.()).has(sid);
+  } catch {
+    return false;
+  }
+}
 async function fetchSessionGroups() {
   try {
     const snap = sessionBridge?.list?.getSnapshot?.();
     const byId = snap?.byId ?? {};
     const current = snap?.current ?? "";
-    const subKids = /* @__PURE__ */ new Set();
-    try {
-      const map2 = snap?.subagentsByParent ?? {};
-      for (const k of Object.keys(map2)) {
-        const v = map2[k];
-        const arr = Array.isArray(v) ? v : v?.entries ?? v?.items ?? [];
-        if (Array.isArray(arr)) arr.forEach((c) => {
-          const cid = c?.sessionId ?? c?.id;
-          if (typeof cid === "string") subKids.add(cid);
-        });
-      }
-    } catch {
-    }
+    const subKids = subagentSessionIds(snap);
     const titleOf = (sid) => byId[sid]?.title ?? byId[sid]?.displayTitle ?? sid;
     const mk = (sid) => ({ id: sid, title: titleOf(sid), isCurrent: sid === current });
     try {
@@ -21676,7 +21692,7 @@ function WorktableSection(props) {
       projectAttachRef.sessionId = prev;
       projectAttachRef.attached = projectsRef.current.projects.bindings[spec.id] ?? prev;
       const bound = projectsRef.current.projects.bindings[spec.id];
-      if (bound) {
+      if (bound && !isSubagentSessionId(bound)) {
         try {
           sessionBridge?.sessions?.open?.(bound);
         } catch {
@@ -21717,7 +21733,8 @@ function WorktableSection(props) {
       } catch {
       }
       projectAttachRef.sessionId = prev;
-      const bound = explicitBound !== void 0 ? explicitBound : projectsRef.current.projects.bindings[CONSOLE_ID];
+      const raw = explicitBound !== void 0 ? explicitBound : projectsRef.current.projects.bindings[CONSOLE_ID];
+      const bound = raw && !isSubagentSessionId(raw) ? raw : null;
       projectAttachRef.attached = bound ?? prev;
       if (bound) {
         try {
@@ -21737,7 +21754,15 @@ function WorktableSection(props) {
     }
   }, [projects.views, t]);
   const clickConsoleCard = (anchor) => {
-    if (projectsRef.current.projects.bindings[CONSOLE_ID]) {
+    const stored = projectsRef.current.projects.bindings[CONSOLE_ID];
+    if (stored && isSubagentSessionId(stored)) {
+      persistProjects((prev) => {
+        const bindings = { ...prev.bindings };
+        delete bindings[CONSOLE_ID];
+        return { ...prev, bindings };
+      });
+    }
+    if (stored && !isSubagentSessionId(stored)) {
       openConsole();
       return;
     }
