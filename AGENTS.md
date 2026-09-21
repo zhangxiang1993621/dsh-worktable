@@ -50,16 +50,26 @@ node --check lib/index.js
 - 变更视图状态结构时同步更新 PRD 的持久化说明。
 - **构建必须 `cd 01_content` 后执行**：误在仓库根跑会把 lib 写到仓库根 `lib/`，宿主仍加载
   `01_content/lib` 旧 bundle，出现「改完不生效」假象（已有教训，见工作日志）。
+- **禁止用 PowerShell 文本管道改 `lib/*.js`**：`Get-Content -Raw` + `Set-Content/WriteAllText`
+  这类往返会把 UTF-8 中文写成乱码（本机实测：markdown-it 内联源码里的 `…` 被写成 `鈥?`，
+  正则闭合斜杠被吞，bundle 直接 `node --check` 失败）。要改产物只能 `npm run build` 重建；
+  应急用 `Copy-Item` 字节级还原备份。构建后必跑 `node --check lib/client.js`。
 - **发布打包唯一入口 = `npm run pack`（01_content/release-prep.mjs）**：身份断言（package/manifest/cordis.patch.yml 严格结构）→
   版本一致性 → 构建（cwd 固定 01_content）→ node --check → npm pack → 结构清单断言（package/ 前缀 + 精确 7 文件，
   无 src/、无 .map）→ 独立临时目录 npm install + import() 断言（apply 函数/inject 含 webServer+sessions/name/
   HEALTH_PATH/包内双 bundle 版本）→ **客户端工厂求值门禁**（ModuleLoader 恰好注册一次 + ID 校验 + 精确外部依赖
   白名单 react/react/jsx-runtime + apply/inject 断言）→ **分栏锚点 DOM 回归**（8 场景，评估安装产物 lib/client.js；
-  测试接受包路径参数）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
+  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 同目录工作区归属对话）→ **窗格恢复回归**（5 场景：关闭留档 / 原样恢复 / 存量救援回填 / 无清单产物候选）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
   脚本零 git/gh 动作，发布上传由 gh 手动完成。
   **发布禁止裸 npm pack 或手工 tar 生成发布包**；脚本从仓库任意目录调用均安全（以自身位置解析）。
 - **配套检查入口**：`npm run test:gate` = 工厂门禁 10 个失败/正向用例；
   `node 04_test/anchor-dom.test.mjs [lib/client.js 路径]` = 分栏锚点 8 场景（缺省用工作目录构建产物）；
+  `node 04_test/session-switch-compat.test.mjs [lib/client.js 路径]` = 主视图会话切换 5 场景
+  （0.1.6 无 sessions.open → uiWorkspace；老宿主回落 sessions.open；两通道优先级；无通道静默；
+  pickProjectSession 绑定优先 / 同目录工作区第一个对话 / 跳过归档与子代理 / 无匹配不切换）；
+  `node 04_test/pane-restore.test.mjs [lib/client.js 路径]` = 窗格恢复 5 场景
+  （closeTab 留档 / restoreClosedTab 原样放回 + 未命中无操作 / seedPaneRestore 只填空窗格 / 活通道闭环 /
+  htmlProductCandidates 无清单产物候选）；
   `node 04_test/server-home.test.mjs [lib/index.js 路径]` = 数据目录解析 3 组场景（子进程隔离夹具；
   **突变体验证法**：把 loadPkg 兜底的 baseDshHome() 故意改回 resolveDshHomeSafe() 恢复循环，测试必须红）。
   `npm run verify:remote -- --expect-sha <release-prep 输出的 SHA> [tag]` = 发布后只读核对
@@ -98,7 +108,20 @@ node --check lib/index.js
   ② 无当前会话且新会话不可用时 → 最近会话众数 → 失效选择的家族词匹配 → 目录首个。
   session.selectModel 同时把新选择存为默认（继承的 Pro 会写回默认）。失败静默、缺 API 跳过。
 - **对话绑定**：projects.v1.bindings = { 项目id → 会话id }；打开项目时引擎自动
-  sessions.open(绑定会话)（openSplit / DOM 桥两处入口）；未绑定/解绑 = 不切换。
+  切换主视图会话到**归属对话**（openSplit / DOM 桥 / 收起态图标 / 控制室 onOpen 四处入口）；
+  归属对话 = 显式绑定优先；**未绑定 = 项目文件夹「同目录」工作区的第一个可用对话**
+  （`pickProjectSession` + `normProjectFolder` 纯函数：按工作区 sessionIds 顺序取第一个，
+  跳过归档与子代理，优先已载入会话；找不到同目录工作区 = 不切换）。自动解析**不写盘**
+  （保持未绑定语义，每次打开重解析；要固定请显式绑定）。回归：
+  `node 04_test/session-switch-compat.test.mjs`（第 5 例）。
+  **切换一律走 openMainSession 兼容层（0.1.6 红线）**：0.1.6-alpha.2 起宿主移除了
+  `ctx.sessions.open`，`sessions.list` 快照也不再带 `current`；主视图切换改由 uiWorkspace
+  服务负责（`ctx.get('uiWorkspace').openSession(id)` → replaceMain → selection 快照，
+  持久化键 dsh.sessions.current）。新宿主优先 uiWorkspace、老宿主回落 sessions.open +
+  list.current，并额外订阅 uiWorkspace.selection（主视图切换不一定经 sessions.list 通知）。
+  **禁止再直接调 sessions.open 或读快照 current**——0.1.6 上是静默空操作，症状：
+  切换项目室后右侧对话/任务不跟着切、当前会话恒为空（openMainSession/currentMainSessionId
+  是唯一入口）。回归：`node 04_test/session-switch-compat.test.mjs`。
 - **项目×对话联动**：打开项目记录「打开前会话」（projectAttachRef.sessionId）；项目打开期间切到
   非绑定会话 = 自动关项目（suppressRestoreRef 跳过回切）；✕/反选关项目 = 回切「打开前会话」。
   未绑定项目的归属会话 = 打开前会话。
@@ -122,6 +145,30 @@ node --check lib/index.js
   **锁死语义**：挂载用 splitStore.lockPane——清空该窗格原有标签，把产物作为唯一固定标签
   （active 0），onSpecMutated 立即持久化；用户下次打开工作台窗口直接显示产物，不丢失不重置。
   待挂载记录带 {content,row,index}，补挂同样 lockPane。
+  **清单缓存与订阅**：`readWidgetManifest(pid, folder, force)`（force = 重读盘；'' = 确认无清单）
+  + `widgetListeners/notifyWidgets`（自愈扫挂、自动挂载后触发）——📦 清单与存量救援回填共用。
+  📦 单条挂载复用 applyWidgetManifest 后必须写回**整份清单**指纹（recordMountedWidget(pid, 全文)），
+  否则自愈扫挂会误判「清单变了」而重挂全部窗口、覆盖用户手动调整。
+- **窗格内容恢复（v0.3.4）**：标签 ✕ 关闭时 closeTab 把原标签（原 id/标题/内容）压入该窗格
+  `closedTabs`（≤5、最近在前、随 spec 持久化）→ 标签关空后选择器顶部渲染「↩ 恢复：<标题>」
+  （最多 3 条）→ restoreClosedTab 原样放回并移出历史。**无操作必须是真无操作**：窗格变更统一走
+  `mutatePane`（窗格不存在或返回同一对象 = null），否则「未命中历史」也会触发 onSpecMutated/persist。
+  **存量救援回填**：项目打开/插件加载时，widget-result.json 里指向「空窗格」的产物经
+  seedPaneRestore（纯函数）/splitStore.seedRestore 登记为可恢复项——只登记、不挂载、不覆盖非空窗格；
+  专治「标签已经关掉、历史为空」的存量情况。非 AI 类标签（网址/终端/文件夹）只在关闭后可从历史恢复。
+  回归：`node 04_test/pane-restore.test.mjs`。
+- **分栏标题栏产物清单（📦，v0.3.4）**：项目打开时标题栏右侧渲染 📦 按钮（清单为空 = 整块不渲染）；
+  env.widgets 注入 {list/subscribe/mount}（index.tsx 读 widget-result.json 组装，引擎不含业务逻辑，
+  与 env.console/env.custom 同构）。弹层每行 = 窗口N + 产物名；点击 = 挂到该窗口（lockPane 语义，
+  可反复挂）；目标窗口不在当前布局 → 置灰 + 「当前布局里没有这个窗口」。
+- **按窗格选产物（v0.3.4，窗格选择器里的「📦 产物」）**：任何空窗格的选择器都会列出**本项目的产物**
+  （env.widgets.products / mountProduct；点一下 = lockPane 到**本窗格**），不再受清单声明的窗口限制。
+  数据源两段：① 有 `widget-result.json` → 列清单全部条目（key `m:<i>`）；
+  ② **无清单** → `scanHtmlProducts` 扫项目文件夹（顶层 + 一层子目录，跳过 .dsh/.git/node_modules）
+  的 `.html` 候选（纯函数 `htmlProductCandidates`，最多 12 条，key `f:<绝对路径>`）——专治像
+  AI学习 这类「有产物、没清单」的项目（其产物在 `widget/index.html` 与 `widget/knowledge-lab.html`）。
+  候选缓存 `productCache`（notifyWidgets 时失效）；选择器最多展示 6 条（PRODUCT_SHOW）。
+  回归：`node 04_test/pane-restore.test.mjs`（第 5 例 = htmlProductCandidates 过滤/层级/封顶）。
 - **原生皮肤模板**：01_content/template/dshell.css + dshell.html（esbuild text loader 嵌入服务端
   bundle，/api/worktable/template 路由下发）；知识包要求产出 HTML 一律引用该样式表，组件类
   参考模板。新增组件样式只加到 dshell.css，保持单一来源。

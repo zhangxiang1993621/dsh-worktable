@@ -188,6 +188,35 @@ if (anchorRun.status !== 0) {
 }
 console.log('[release-prep] split anchor dom tests passed (8 scenarios, on installed artifact)')
 
+// ---------- 5c2. 主视图会话切换兼容层回归（0.1.6 移除 sessions.open → uiWorkspace.openSession） ----------
+// 与 5c 同一最终产物：无 sessions.open 的新宿主必须走 uiWorkspace，老宿主保持 sessions.open
+const switchTest = join(HERE, '..', '04_test', 'session-switch-compat.test.mjs')
+if (!existsSync(switchTest)) {
+  console.error('[release-prep] FAIL: session-switch-compat.test.mjs missing')
+  process.exit(1)
+}
+const switchRun = spawnSync(process.execPath, [switchTest, join(inst, 'node_modules', 'dsh-worktable', 'lib', 'client.js')], { cwd: HERE, stdio: 'pipe', encoding: 'utf8' })
+if (switchRun.status !== 0) {
+  console.error('[release-prep] FAIL: session-switch-compat.test.mjs')
+  console.error(switchRun.stderr || switchRun.stdout)
+  process.exit(1)
+}
+console.log('[release-prep] main session switch compat tests passed (4 scenarios, on installed artifact)')
+
+// ---------- 5c3. 窗格恢复回归（closeTab 留档 / restoreClosedTab 原样放回 / 存量救援回填） ----------
+const paneTest = join(HERE, '..', '04_test', 'pane-restore.test.mjs')
+if (!existsSync(paneTest)) {
+  console.error('[release-prep] FAIL: pane-restore.test.mjs missing')
+  process.exit(1)
+}
+const paneRun = spawnSync(process.execPath, [paneTest, join(inst, 'node_modules', 'dsh-worktable', 'lib', 'client.js')], { cwd: HERE, stdio: 'pipe', encoding: 'utf8' })
+if (paneRun.status !== 0) {
+  console.error('[release-prep] FAIL: pane-restore.test.mjs')
+  console.error(paneRun.stderr || paneRun.stdout)
+  process.exit(1)
+}
+console.log('[release-prep] pane restore tests passed (4 scenarios, on installed artifact)')
+
 // ---------- 5d. 服务端数据目录解析回归（loadPkg ↔ resolveDshHomeSafe 循环调用修复） ----------
 // 评估「安装目录中的最终产物」lib/index.js；官方路径 / 包不可解析兜底 / ~ 与相对路径展开
 const serverHomeTest = join(HERE, '..', '04_test', 'server-home.test.mjs')

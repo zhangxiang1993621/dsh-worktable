@@ -48,6 +48,8 @@ export type SplitPane = {
   active?: number
   /** 头部折叠：true = 隐藏窗格标题与标签栏（内容占满；随 spec 持久化） */
   collapsed?: boolean
+  /** 最近关闭的标签（≤5，最近在前）：标签关空后选择器里可一键**原样**恢复；随 spec 持久化 */
+  closedTabs?: PaneTab[]
 }
 
 export type LayoutSpec = {
@@ -95,6 +97,8 @@ type SplitState = {
   observer: ResizeObserver | null
   fallback: MutationObserver | null
   yieldObserver: MutationObserver | null
+  /** 让位迟滞计数：连续被打断多少次才真的关闭（防宿主布局抖动误关） */
+  yieldStrikes: number
   lastMarginLeft: string
   lastMarginRight: string
   lastMarginTop: string
@@ -114,7 +118,13 @@ type SplitState = {
   openTab(row: PaneRow, i: number, content: SplitContent): void
   /** 锁定窗格：清空原有标签，把内容作为该窗唯一的固定标签（挂载产物的「锁死」语义） */
   lockPane(row: PaneRow, i: number, content: SplitContent): void
+  /** 对指定窗格套用变更；窗格不存在或返回值不变（===）→ null（调用方据此跳过持久化与通知） */
+  mutatePane(row: PaneRow, i: number, mutate: (pane: SplitPane) => SplitPane): LayoutSpec | null
   closeTab(row: PaneRow, i: number, tabId: string): void
+  /** 恢复该窗格最近关闭的标签（原样放回：原 id/标题/内容）；不在历史里 = 无操作 */
+  restoreClosedTab(row: PaneRow, i: number, tabId: string): void
+  /** 存量救援回填：把内容登记为该空窗格的可恢复项（只登记不挂载、不覆盖非空窗格） */
+  seedRestore(row: PaneRow, i: number, content: SplitContent): void
   setActiveTab(row: PaneRow, i: number, tabId: string): void
   toggleCollapsed(row: PaneRow, i: number): void
   moveTab(fromRow: PaneRow, fromI: number, tabId: string, toRow: PaneRow, toI: number): void
@@ -130,6 +140,11 @@ const GAP = 1           // 窗格之间真实布局间隙：1px（分隔细线�
 const DIVIDER = 4       // 分隔条热区宽度：透明覆盖层，细线画在热区中间与两侧内容贴齐
 const BAR_H = 26
 const PERSIST_KEY = 'dsh.worktable.split.v2'
+/** 窗格「最近关闭」历史：保留上限 5 条，选择器里最多展示 3 条 */
+const CLOSED_TAB_CAP = 5
+const CLOSED_TAB_SHOW = 3
+/** 选择器里最多展示的产物按钮数（清单/扫描候选都按此截断） */
+const PRODUCT_SHOW = 6
 
 /** 内置内容窗图标 */
 const BUILTIN_ICONS: Record<BuiltinType, string> = {
@@ -219,6 +234,19 @@ export type ConsoleCardData = {
   glow: boolean
 }
 
+/** 项目产物清单条目（index.tsx 读 widget-result.json 组装；引擎只渲染与派发动作） */
+export type WidgetEntry = {
+  /** 清单里的下标（mount 时回传） */
+  index: number
+  /** 清单声明的目标窗口（「窗口N」） */
+  window: string
+  /** 展示名（产物文件名 / 网址） */
+  title: string
+  kind: string
+  /** 目标窗口在当前布局里是否存在（不存在 = 置灰） */
+  mountable: boolean
+}
+
 type SplitEnv = {
   getScope: () => SplitScope | null
   getJobs: () => SplitJob[]
@@ -280,6 +308,19 @@ type SplitEnv = {
     setGlowHsl: (v: { h: number; s: number; l: number }) => void
     getPhotoHsl: () => { h: number; s: number; l: number }
     setPhotoHsl: (v: { h: number; s: number; l: number }) => void
+  }
+  /** 项目产物清单（项目文件夹里的 widget-result.json）：分栏标题栏「📦」按钮的数据与动作 */
+  widgets?: {
+    /** 读清单（带缓存；项目未设文件夹/无清单 = 空数组） */
+    list: (projectId: string) => Promise<WidgetEntry[]>
+    /** 清单变化通知（自愈扫挂/自动挂载后触发，按钮据此出现/刷新） */
+    subscribe: (projectId: string, fn: () => void) => () => void
+    /** 把清单第 index 条产物挂到它声明的窗口（沿用既有锁窗语义，可反复挂） */
+    mount: (projectId: string, index: number) => void
+    /** 本项目全部可选产物（清单优先；无清单时扫项目文件夹的 .html 兜底）——窗格选择器直接挂到本窗格 */
+    products: (projectId: string) => Promise<{ key: string; title: string; kind: string }[]>
+    /** 把产物挂到**指定窗格**（lockPane 语义；key 来自 products()） */
+    mountProduct: (projectId: string, key: string, row: string, paneIndex: number) => void
   }
 }
 let splitEnv: SplitEnv | null = null
@@ -717,6 +758,11 @@ function resolveAnchor(root: HTMLElement): { header: HTMLElement | null; viewAre
   return { header, viewArea: second ?? first! }
 }
 
+/** 临时诊断（排查「窗格尺寸被重置成预设」）：控制台过滤 [wt-geom]。定位后删除。 */
+function wtGeom(tag: string, data?: unknown) {
+  try { console.info('[wt-geom]', tag, data) } catch {}
+}
+
 function loadSaved(layoutId: string): { chatW: number; topH: number; leftW: number; paneWs: number[]; topWs: number[]; leftWs: number[] } | null {
   try {
     const raw = localStorage.getItem(PERSIST_KEY)
@@ -737,6 +783,7 @@ function loadSaved(layoutId: string): { chatW: number; topH: number; leftW: numb
 }
 
 function persistSaved(layoutId: string, s: { chatW: number; topH: number; leftW: number; paneWs: number[]; topWs: number[]; leftWs: number[] }) {
+  wtGeom('save', { layoutId, chatW: s.chatW, topH: s.topH, leftW: s.leftW, paneWs: s.paneWs, topWs: s.topWs, leftWs: s.leftWs })
   try {
     const raw = localStorage.getItem(PERSIST_KEY)
     const all = raw ? JSON.parse(raw) : {}
@@ -750,6 +797,29 @@ window.addEventListener('dsh:split-claim', ((e: any) => {
   const id = e?.detail?.id
   if (splitStore.active && id && id !== splitStore.spec?.id) splitStore.close()
 }) as EventListener)
+
+/** 存量救援回填（纯函数）：把 content 登记为指定窗格的「可恢复项」。
+ *  仅当窗格存在、当前没有标签、且历史里没有同内容时返回新 spec；否则返回 null（调用方跳过持久化）。 */
+export function seedPaneRestore(spec: LayoutSpec, row: PaneRow, i: number, content: SplitContent): LayoutSpec | null {
+  const pane = row === 'left'
+    ? (i === 0 ? (spec.left ?? null) : null)
+    : (row === 'top' ? ((spec.top ?? [])[i] ?? null) : ((spec.main ?? [])[i] ?? null))
+  if (!pane) return null
+  if ((pane.tabs ?? []).length > 0) return null
+  const closed = pane.closedTabs ?? []
+  if (closed.some((t) => sameContent(t.content, content))) return null
+  const tab: PaneTab = { id: 't' + Date.now().toString(36), title: tabTitleOf(content), content }
+  const nextPane: SplitPane = { ...pane, closedTabs: [tab, ...closed].slice(0, CLOSED_TAB_CAP) }
+  if (row === 'left') return { ...spec, left: nextPane }
+  if (row === 'top') {
+    const top = [...(spec.top ?? [])]
+    top[i] = nextPane
+    return { ...spec, top }
+  }
+  const main = [...spec.main]
+  main[i] = nextPane
+  return { ...spec, main }
+}
 
 export const splitStore: SplitState = {
   active: false,
@@ -771,6 +841,7 @@ export const splitStore: SplitState = {
   observer: null,
   fallback: null,
   yieldObserver: null,
+  yieldStrikes: 0,
   lastMarginLeft: '',
   lastMarginRight: '',
   lastMarginTop: '',
@@ -826,6 +897,11 @@ export const splitStore: SplitState = {
     this.paneWs = hasPaneWs ? [...saved!.paneWs] : main.map((p) => p.min)
     this.topWs = hasTopWs ? [...saved!.topWs] : top.map((p) => p.min)
     this.leftWs = hasLeftWs ? [...saved!.leftWs] : (left ? [left.min] : [])
+    wtGeom('open', {
+      id: spec.id, hasSaved: !!saved, hasPaneWs, hasTopWs, hasLeftWs, mainPanes: main.length,
+      chatW: this.chatW, topH: this.topH, leftW: this.leftW, paneWs: this.paneWs.slice(),
+      from: (new Error().stack ?? '').split('\n').slice(2, 5).map((s) => s.trim()).join(' | '),
+    })
     this.root = root
     this.header = header
     this.viewArea = viewArea
@@ -833,6 +909,7 @@ export const splitStore: SplitState = {
     this.savedMarginLeft = viewArea.style.marginLeft
     this.savedMarginRight = viewArea.style.marginRight
     this.savedMarginTop = viewArea.style.marginTop
+    this.yieldStrikes = 0
     this.refreshGeom()
     // 存档 sanitize：chatW 等尺寸按本布局规格钳制（防老版本/脏存值越界，如 1067 > max 600）
     if (this.geom) {
@@ -895,14 +972,25 @@ export const splitStore: SplitState = {
       if (anchor.header !== this.header || anchor.viewArea !== this.viewArea) this.syncAnchor()
     })
     this.fallback.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-phase'] })
-    // 让位观察器：会话视图区 margin 被外部改写（其他未接入协议的分栏引擎接管）时关闭自身
+    // 让位观察器：会话视图区 margin 被外部改写（其他未接入协议的分栏引擎接管）时关闭自身。
+    // 迟滞（2026-09-15 修复）：宿主布局变化（侧栏开合/任务开始）或别的插件只是重写了一次
+    // style 属性时，立刻关闭会让「工作台在任何布局抖动下都消失」。改为先把 margin 写回；
+    // 连续 4 次仍被改写，才判定外部引擎接管并让位。
     this.yieldObserver = new MutationObserver(() => {
       if (!this.active || !this.viewArea) return
-      if (this.viewArea.style.marginLeft !== this.lastMarginLeft
-        || this.viewArea.style.marginRight !== this.lastMarginRight
-        || this.viewArea.style.marginTop !== this.lastMarginTop) {
-        this.close()
+      const got = [this.viewArea.style.marginLeft, this.viewArea.style.marginRight, this.viewArea.style.marginTop]
+      const want = [this.lastMarginLeft, this.lastMarginRight, this.lastMarginTop]
+      if (got[0] === want[0] && got[1] === want[1] && got[2] === want[2]) {
+        this.yieldStrikes = 0
+        return
       }
+      this.yieldStrikes += 1
+      wtGeom('yield', { id: this.spec?.id, want, got, strikes: this.yieldStrikes })
+      if (this.yieldStrikes <= 3) {
+        try { this.applyMargin() } catch {}
+        return
+      }
+      this.close()
     })
     this.yieldObserver.observe(viewArea, { attributes: true, attributeFilter: ['style'] })
     this.active = true
@@ -1160,27 +1248,79 @@ export const splitStore: SplitState = {
     this.notify()
   },
 
+  /** 对指定窗格套用变更；窗格不存在或返回值不变（===）→ null（未命中历史 = 真正的无操作） */
+  mutatePane(row, i, mutate) {
+    const spec = this.spec
+    if (!spec) return null
+    if (row === 'left') {
+      if (!spec.left || i !== 0) return null
+      const pane = mutate(spec.left)
+      return pane === spec.left ? null : { ...spec, left: pane }
+    }
+    if (row === 'top') {
+      const top = [...(spec.top ?? [])]
+      if (!top[i]) return null
+      const pane = mutate(top[i])
+      if (pane === top[i]) return null
+      top[i] = pane
+      return { ...spec, top }
+    }
+    const main = [...spec.main]
+    if (!main[i]) return null
+    const pane = mutate(main[i])
+    if (pane === main[i]) return null
+    main[i] = pane
+    return { ...spec, main }
+  },
+
   closeTab(row, i, tabId) {
     const spec = this.spec
     if (!spec) return
     const mutate = (pane: SplitPane): SplitPane => {
-      const tabs = (pane.tabs ?? []).filter((t) => t.id !== tabId)
-      return { ...pane, tabs, active: 0 }
+      const list = pane.tabs ?? []
+      const removed = list.find((t) => t.id === tabId)
+      if (!removed) return pane
+      const tabs = list.filter((t) => t.id !== tabId)
+      // 最近关闭留档（≤5，按 id 去重）：标签关空后选择器里可一键**原样**恢复
+      const closedTabs = [removed, ...(pane.closedTabs ?? []).filter((t) => t.id !== removed.id)].slice(0, CLOSED_TAB_CAP)
+      return { ...pane, tabs, active: 0, closedTabs }
     }
-    if (row === 'left') {
-      if (!spec.left || i !== 0) return
-      this.spec = { ...spec, left: mutate(spec.left) }
-    } else if (row === 'top') {
-      const top = [...(spec.top ?? [])]
-      if (!top[i]) return
-      top[i] = mutate(top[i])
-      this.spec = { ...spec, top }
-    } else {
-      const main = [...spec.main]
-      if (!main[i]) return
-      main[i] = mutate(main[i])
-      this.spec = { ...spec, main }
+    const next = this.mutatePane(row, i, mutate)
+    if (!next) return
+    this.spec = next
+    this.onSpecMutated?.(this.spec)
+    this.persist()
+    this.notify()
+  },
+
+  /** 恢复最近关闭的标签：原样放回（保留原 id/标题/内容），并把它移出历史；未命中 = 无操作 */
+  restoreClosedTab(row, i, tabId) {
+    const spec = this.spec
+    if (!spec) return
+    const mutate = (pane: SplitPane): SplitPane => {
+      const closed = pane.closedTabs ?? []
+      const idx = closed.findIndex((t) => t.id === tabId)
+      if (idx < 0) return pane
+      const tabs = [...(pane.tabs ?? [])]
+      if (tabs.some((t) => t.id === tabId)) return pane
+      tabs.push(closed[idx])
+      return { ...pane, content: null, tabs, active: tabs.length - 1, closedTabs: closed.filter((_, k) => k !== idx) }
     }
+    const next = this.mutatePane(row, i, mutate)
+    if (!next) return
+    this.spec = next
+    this.onSpecMutated?.(this.spec)
+    this.persist()
+    this.notify()
+  },
+
+  /** 存量救援回填（活 spec 通道）：把产物登记为空窗格的可恢复项（只登记不挂载） */
+  seedRestore(row, i, content) {
+    const spec = this.spec
+    if (!spec) return
+    const next = seedPaneRestore(spec, row, i, content)
+    if (!next) return
+    this.spec = next
     this.onSpecMutated?.(this.spec)
     this.persist()
     this.notify()
@@ -1316,6 +1456,7 @@ export const splitStore: SplitState = {
   },
 
   close() {
+    wtGeom('close', { id: this.spec?.id, from: (new Error().stack ?? '').split('\n').slice(2, 5).map((s) => s.trim()).join(' | ') })
     if (this.root && this.root.isConnected) {
       if (this.savedWidthVar) this.root.style.setProperty('--dsh-chat-user-width', this.savedWidthVar)
       else this.root.style.removeProperty('--dsh-chat-user-width')
@@ -1356,7 +1497,7 @@ export const splitStore: SplitState = {
 if (typeof document !== 'undefined' && document.body) {
   const taObserver = new MutationObserver(() => {
     if (!splitStore.active) return
-    if (document.querySelector('.ta_split')) splitStore.close()
+    if (document.querySelector('.ta_split')) { wtGeom('ta-split', { id: splitStore.spec?.id }); splitStore.close() }
   })
   taObserver.observe(document.body, { childList: true, subtree: true })
 }
@@ -2848,13 +2989,13 @@ function refreshableTab(t: PaneTab): boolean {
 
 /** 窗内容：标签页模型（无标签 = 6 选 1 选择器；标签可切换/关闭，关完回到选择器）
  *  网页类标签最左侧固定一个 ↻ 刷新按钮（标签名之前），点击重挂载该标签内容。 */
-function PaneBody(props: { pane: SplitPane; row: PaneRow; index: number }) {
-  const { pane, row, index } = props
+function PaneBody(props: { pane: SplitPane; row: PaneRow; index: number; projectId: string }) {
+  const { pane, row, index, projectId } = props
   const tabs = pane.tabs ?? []
   const active = Math.min(pane.active ?? 0, Math.max(0, tabs.length - 1))
   const [reloadKeys, setReloadKeys] = useState<Record<string, number>>({})
   if (tabs.length === 0) {
-    return <PanePicker row={row} index={index} />
+    return <PanePicker pane={pane} row={row} index={index} projectId={projectId} />
   }
   const refreshTab = (t: PaneTab) => {
     setReloadKeys((m) => ({ ...m, [t.id]: (m[t.id] ?? 0) + 1 }))
@@ -2907,11 +3048,27 @@ function PaneBody(props: { pane: SplitPane; row: PaneRow; index: number }) {
   )
 }
 
-/** 未指派内容：4 选 1 选择器。按钮固定大小、整体居中；
- * 按窗位宽高比自适应排列：宽窗横排 4 连 / 方窗 2×2 / 竖窗竖排。 */
-function PanePicker(props: { row: PaneRow; index: number }) {
+/** 未指派内容：4 选 1 选择器 +（有历史时）最近关闭的「↩ 恢复」按钮。
+ *  按钮固定大小、整体居中；按窗位宽高比自适应排列：宽窗横排 4 连 / 方窗 2×2 / 竖窗竖排。 */
+function PanePicker(props: { pane: SplitPane; row: PaneRow; index: number; projectId: string }) {
   const [mode, setMode] = useState<'row' | 'grid' | 'col'>('grid')
+  const [products, setProducts] = useState<{ key: string; title: string; kind: string }[]>([])
   const hostRef = useRef<HTMLDivElement | null>(null)
+  // 本项目可选产物（清单优先；无清单时项目文件夹 .html 兜底）：点一下挂到**本窗格**
+  useEffect(() => {
+    let alive = true
+    const load = () => {
+      const p = splitEnv?.widgets?.products?.(props.projectId)
+      if (!p) { setProducts([]); return }
+      Promise.resolve(p)
+        .then((l) => { if (alive) setProducts((l ?? []).slice(0, PRODUCT_SHOW)) })
+        .catch(() => { if (alive) setProducts([]) })
+    }
+    load()
+    let un: (() => void) | undefined
+    try { un = splitEnv?.widgets?.subscribe?.(props.projectId, load) } catch {}
+    return () => { alive = false; try { un?.() } catch {} }
+  }, [props.projectId])
   useEffect(() => {
     const el = hostRef.current
     if (!el) return
@@ -2927,24 +3084,110 @@ function PanePicker(props: { row: PaneRow; index: number }) {
     return () => ro.disconnect()
   }, [])
   const pick = (content: SplitContent) => splitStore.openTab(props.row, props.index, content)
+  // 最近关闭的标签：一键原样恢复（最多展示 3 条；无历史时整块不渲染）
+  const closed = (props.pane.closedTabs ?? []).slice(0, CLOSED_TAB_SHOW)
   return (
-    <div ref={hostRef} className={'dsh-wt_panePicker dsh-wt_panePicker-' + mode}>
-      <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'browser' })}>
-        <span aria-hidden>🌐</span>{T('pane.browser')}
-      </button>
-      <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'anim' })}>
-        <span aria-hidden>🎬</span>{T('pane.anim')}
-      </button>
-      <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'explorer' })}>
-        <span aria-hidden>📁</span>{T('pane.explorer')}
-      </button>
-      <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'terminal' })}>
-        <span aria-hidden>▸_</span>{T('pane.terminal')}
-      </button>
-      <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'custom' })}>
-        <span aria-hidden>✨</span>{T('pane.custom')}
-      </button>
+    <div className="dsh-wt_panePickerWrap">
+      {closed.length > 0 && (
+        <div className="dsh-wt_paneRestore">
+          {closed.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="dsh-wt_paneRestoreBtn"
+              title={T('pane.restoreTitle')}
+              onClick={() => splitStore.restoreClosedTab(props.row, props.index, t.id)}
+            >
+              <span aria-hidden>↩</span>
+              <span className="dsh-wt_paneRestoreName">{T('pane.restore')}：{t.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {products.length > 0 && (
+        <div className="dsh-wt_paneRestore">
+          {products.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className="dsh-wt_paneRestoreBtn dsh-wt_paneProductBtn"
+              title={T('pane.productTitle', { name: p.title })}
+              onClick={() => { try { splitEnv?.widgets?.mountProduct(props.projectId, p.key, props.row, props.index) } catch {} }}
+            >
+              <span aria-hidden>📦</span>
+              <span className="dsh-wt_paneRestoreName">{T('pane.products')}：{p.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={hostRef} className={'dsh-wt_panePicker dsh-wt_panePicker-' + mode}>
+        <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'browser' })}>
+          <span aria-hidden>🌐</span>{T('pane.browser')}
+        </button>
+        <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'anim' })}>
+          <span aria-hidden>🎬</span>{T('pane.anim')}
+        </button>
+        <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'explorer' })}>
+          <span aria-hidden>📁</span>{T('pane.explorer')}
+        </button>
+        <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'terminal' })}>
+          <span aria-hidden>▸_</span>{T('pane.terminal')}
+        </button>
+        <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'custom' })}>
+          <span aria-hidden>✨</span>{T('pane.custom')}
+        </button>
+      </div>
     </div>
+  )
+}
+
+/** 分栏标题栏「📦 产物」：列项目文件夹里 widget-result.json 的产物，点一行重挂到它声明的窗口。
+ *  清单为空 → 整块不渲染（零 UI 噪音）；数据与动作由工作台经 env.widgets 注入（引擎不含业务）。 */
+function WidgetMenu(props: { projectId: string }) {
+  const [items, setItems] = useState<WidgetEntry[] | null>(null)
+  const [open, setOpen] = useState(false)
+  const refresh = useCallback(() => {
+    const p = splitEnv?.widgets?.list(props.projectId)
+    if (!p) { setItems([]); return }
+    Promise.resolve(p).then((l) => setItems(l ?? [])).catch(() => setItems([]))
+  }, [props.projectId])
+  useEffect(() => {
+    refresh()
+    let un: (() => void) | undefined
+    try { un = splitEnv?.widgets?.subscribe?.(props.projectId, refresh) } catch {}
+    return () => { try { un?.() } catch {} }
+  }, [refresh])
+  if (!items || items.length === 0) return null
+  return (
+    <>
+      <button
+        type="button"
+        className="dsh-wt_widgetBtn"
+        title={T('widget.list')}
+        aria-label={T('widget.list')}
+        aria-expanded={open}
+        onClick={() => { setOpen((v) => !v); refresh() }}
+      >📦</button>
+      {open && (
+        <div className="dsh-wt_widgetPop" role="menu">
+          <div className="dsh-wt_widgetHead">{T('widget.title')}</div>
+          {items.map((it) => (
+            <button
+              key={it.index}
+              type="button"
+              role="menuitem"
+              className="dsh-wt_widgetRow"
+              disabled={!it.mountable}
+              title={it.mountable ? it.title : T('widget.noPane')}
+              onClick={() => { try { splitEnv?.widgets?.mount(props.projectId, it.index) } catch {} ; setOpen(false) }}
+            >
+              <span className="dsh-wt_widgetWin">{it.window}</span>
+              <span className="dsh-wt_widgetName">{it.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -3028,7 +3271,7 @@ function WorkspaceLayer(props: { spec: LayoutSpec; geom: Geom | null; chatW: num
         <span className="dsh-wt_paneTitle">{it.pane.title}</span>
       </div>
       )}
-      <PaneBody pane={it.pane} row={row} index={index} />
+      <PaneBody pane={it.pane} row={row} index={index} projectId={spec.id} />
       {!singleConsole && (
         <>
         <button
@@ -3064,6 +3307,7 @@ function WorkspaceLayer(props: { spec: LayoutSpec; geom: Geom | null; chatW: num
       {/* 标题栏 */}
       <div className="dsh-wt_splitBar" style={{ position: 'fixed', left: g.left, top: barTop, width: hasLeft || chatFull ? contentW : (hasTop ? colW : contentW), zIndex: 70 }}>
         {spec.id !== 'wt-console' && <span className="dsh-wt_splitTitle">{spec.title}</span>}
+        <WidgetMenu projectId={spec.id} />
         {!hasLeft && (
           <button
             type="button"
@@ -3222,6 +3466,6 @@ function SplitWorkspace() {
 }
 
 /** 调试出口（自动化验证用；必须在 store 定义之后） */
-try { (window as any).__dshWorktable = { splitStore } } catch {}
+try { (window as any).__dshWorktable = { splitStore, seedPaneRestore } } catch {}
 
 export { SplitWorkspace }

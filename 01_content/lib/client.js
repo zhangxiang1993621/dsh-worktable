@@ -7538,7 +7538,10 @@ __export(index_exports, {
   WorktableSection: () => WorktableSection,
   apply: () => apply,
   createCustomSession: () => createCustomSession,
+  htmlProductCandidates: () => htmlProductCandidates,
   inject: () => inject,
+  normProjectFolder: () => normProjectFolder,
+  pickProjectSession: () => pickProjectSession,
   sendCustomToSession: () => sendCustomToSession
 });
 module.exports = __toCommonJS(index_exports);
@@ -8112,6 +8115,25 @@ var css = xterm_default + "\n" + [
   ".dsh-wt_paneWipText{font-size:11px}",
   ".dsh-wt_splitFlip{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:13px;cursor:pointer}",
   ".dsh-wt_splitFlip:hover{color:var(--dsw-alias-label-primary,#e6e8eb);background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06))}",
+  // 窗格关空后的「↩ 恢复」：选择器上方的恢复按钮（只在有历史时渲染）
+  ".dsh-wt_panePickerWrap{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;overflow:auto}",
+  ".dsh-wt_panePickerWrap .dsh-wt_panePicker{flex:none;padding:0;overflow:visible}",
+  ".dsh-wt_paneRestore{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%;max-width:320px}",
+  ".dsh-wt_paneRestoreBtn{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 10px;border:1px dashed var(--dsw-alias-border-l1,#262b36);border-radius:8px;background:var(--dsw-alias-fill-l1,rgba(255,255,255,.02));color:var(--dsw-alias-label-primary,#e6e8eb);font:inherit;font-size:11px;line-height:15px;cursor:pointer;transition:border-color .15s,background .15s}",
+  ".dsh-wt_paneRestoreBtn:hover{border-color:var(--dsw-alias-state-accent-primary,#4f8ef7);background:var(--dsw-alias-fill-l1,rgba(255,255,255,.05))}",
+  ".dsh-wt_paneRestoreName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  // 本项目产物：实线边框（与虚线「↩ 恢复」区分），点一下挂到本窗格
+  ".dsh-wt_paneProductBtn{border-style:solid}",
+  // 分栏标题栏「📦 产物」：清单按钮 + 下拉（清单为空时整体不渲染）
+  ".dsh-wt_widgetBtn{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:12px;line-height:20px;cursor:pointer}",
+  ".dsh-wt_widgetBtn:hover{color:var(--dsw-alias-label-primary,#e6e8eb);background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06))}",
+  ".dsh-wt_widgetPop{position:absolute;right:0;top:100%;min-width:220px;max-width:340px;max-height:320px;overflow:auto;padding:6px;border:1px solid var(--dsw-alias-border-l1,#262b36);border-radius:8px;background:var(--dsw-alias-bg-base,#0b0e14);box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:80}",
+  ".dsh-wt_widgetHead{padding:4px 6px 6px;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}",
+  ".dsh-wt_widgetRow{display:flex;align-items:center;gap:8px;width:100%;min-width:0;padding:6px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary,#e6e8eb);font:inherit;font-size:12px;text-align:left;cursor:pointer}",
+  ".dsh-wt_widgetRow:hover:not(:disabled){background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06))}",
+  ".dsh-wt_widgetRow:disabled{opacity:.45;cursor:not-allowed}",
+  ".dsh-wt_widgetWin{flex:none;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}",
+  ".dsh-wt_widgetName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
   // + 右侧弹出面板
   ".dsh-wt_popBackdrop{position:fixed;left:0;top:0;right:0;bottom:0;z-index:79;background:transparent}",
   // 删除二次确认（fixed 居中模态，压在弹窗之上）
@@ -8590,6 +8612,13 @@ var zh = {
   "pane.termFail": "\u7EC8\u7AEF\u4E0D\u53EF\u7528\uFF08\u5BBF\u4E3B\u7F3A\u5C11 node-pty/ws \u6216\u8FDE\u63A5\u5931\u8D25\uFF09",
   "pane.closeTab": "\u5173\u95ED\u6807\u7B7E\u9875",
   "pane.collapse": "\u6298\u53E0\u7A97\u683C",
+  "pane.restore": "\u6062\u590D",
+  "pane.restoreTitle": "\u6062\u590D\u4E0A\u6B21\u5173\u95ED\u7684\u6807\u7B7E\u9875\uFF08\u539F\u5185\u5BB9\u539F\u6837\u653E\u56DE\uFF09",
+  "pane.products": "\u4EA7\u7269",
+  "pane.productTitle": "\u628A\u300C{name}\u300D\u6302\u5230\u672C\u7A97\u53E3",
+  "widget.list": "\u4EA7\u7269\u6E05\u5355",
+  "widget.title": "\u5DF2\u6302\u8F7D\u4EA7\u7269\uFF08\u70B9\u51FB\u91CD\u6302\u5230\u5BF9\u5E94\u7A97\u53E3\uFF09",
+  "widget.noPane": "\u5F53\u524D\u5E03\u5C40\u91CC\u6CA1\u6709\u8FD9\u4E2A\u7A97\u53E3",
   "annot.label": "\u6807\u6CE8\uFF1A\u70B9\u51FB\u6216\u62D6\u52A8\u7A97\u53E3\u4E2D\u7684\u4F4D\u7F6E\u63D0\u8981\u6C42",
   "annot.hint": "\u70B9\u51FB\u6216\u62D6\u52A8\u6846\u9009\u7A97\u53E3\u4E2D\u7684\u4EFB\u610F\u4F4D\u7F6E\uFF0C\u518D\u8F93\u5165\u4F60\u7684\u8981\u6C42\uFF1B\u8FDE\u7EED\u6807\u6CE8\u4F1A\u4F9D\u6B21\u8FFD\u52A0\u5230\u8F93\u5165\u6846",
   "annot.placeholder": "\u5BF9\u8FD9\u91CC\u63D0\u8981\u6C42\u2026\uFF08Enter \u786E\u8BA4\uFF0CShift+Enter \u6362\u884C\uFF0CEsc \u53D6\u6D88\uFF09",
@@ -8820,6 +8849,13 @@ var en = {
   "pane.termFail": "Terminal unavailable (host missing node-pty/ws, or connection failed)",
   "pane.closeTab": "Close tab",
   "pane.collapse": "Collapse pane",
+  "pane.restore": "Restore",
+  "pane.restoreTitle": "Restore the last closed tab (exact same content)",
+  "pane.products": "Widget",
+  "pane.productTitle": 'Mount "{name}" into this window',
+  "widget.list": "Widget list",
+  "widget.title": "Mounted widgets (click to remount into its window)",
+  "widget.noPane": "This window is not in the current layout",
   "annot.label": "Annotate: click or drag a spot in the window",
   "annot.hint": "Click or drag to select a spot in any window, then type your request; consecutive annotations append to the input.",
   "annot.placeholder": "Describe what to change here\u2026 (Enter to confirm, Shift+Enter newline, Esc cancel)",
@@ -16830,6 +16866,9 @@ var GAP = 1;
 var DIVIDER = 4;
 var BAR_H = 26;
 var PERSIST_KEY = "dsh.worktable.split.v2";
+var CLOSED_TAB_CAP = 5;
+var CLOSED_TAB_SHOW = 3;
+var PRODUCT_SHOW = 6;
 var BUILTIN_ICONS = {
   browser: "\u{1F310}",
   anim: "\u{1F3AC}",
@@ -17306,6 +17345,12 @@ function resolveAnchor(root) {
   const header = !!second && !!first ? visibleHeaderIn(first) : null;
   return { header, viewArea: second ?? first };
 }
+function wtGeom(tag, data) {
+  try {
+    console.info("[wt-geom]", tag, data);
+  } catch {
+  }
+}
 function loadSaved(layoutId) {
   try {
     const raw = localStorage.getItem(PERSIST_KEY);
@@ -17325,6 +17370,7 @@ function loadSaved(layoutId) {
   }
 }
 function persistSaved(layoutId, s) {
+  wtGeom("save", { layoutId, chatW: s.chatW, topH: s.topH, leftW: s.leftW, paneWs: s.paneWs, topWs: s.topWs, leftWs: s.leftWs });
   try {
     const raw = localStorage.getItem(PERSIST_KEY);
     const all = raw ? JSON.parse(raw) : {};
@@ -17337,6 +17383,24 @@ window.addEventListener("dsh:split-claim", ((e) => {
   const id = e?.detail?.id;
   if (splitStore.active && id && id !== splitStore.spec?.id) splitStore.close();
 }));
+function seedPaneRestore(spec, row, i, content) {
+  const pane = row === "left" ? i === 0 ? spec.left ?? null : null : row === "top" ? (spec.top ?? [])[i] ?? null : (spec.main ?? [])[i] ?? null;
+  if (!pane) return null;
+  if ((pane.tabs ?? []).length > 0) return null;
+  const closed = pane.closedTabs ?? [];
+  if (closed.some((t) => sameContent(t.content, content))) return null;
+  const tab = { id: "t" + Date.now().toString(36), title: tabTitleOf(content), content };
+  const nextPane = { ...pane, closedTabs: [tab, ...closed].slice(0, CLOSED_TAB_CAP) };
+  if (row === "left") return { ...spec, left: nextPane };
+  if (row === "top") {
+    const top = [...spec.top ?? []];
+    top[i] = nextPane;
+    return { ...spec, top };
+  }
+  const main = [...spec.main];
+  main[i] = nextPane;
+  return { ...spec, main };
+}
 var splitStore = {
   active: false,
   spec: null,
@@ -17357,6 +17421,7 @@ var splitStore = {
   observer: null,
   fallback: null,
   yieldObserver: null,
+  yieldStrikes: 0,
   lastMarginLeft: "",
   lastMarginRight: "",
   lastMarginTop: "",
@@ -17409,6 +17474,19 @@ var splitStore = {
     this.paneWs = hasPaneWs ? [...saved.paneWs] : main.map((p) => p.min);
     this.topWs = hasTopWs ? [...saved.topWs] : top.map((p) => p.min);
     this.leftWs = hasLeftWs ? [...saved.leftWs] : left ? [left.min] : [];
+    wtGeom("open", {
+      id: spec.id,
+      hasSaved: !!saved,
+      hasPaneWs,
+      hasTopWs,
+      hasLeftWs,
+      mainPanes: main.length,
+      chatW: this.chatW,
+      topH: this.topH,
+      leftW: this.leftW,
+      paneWs: this.paneWs.slice(),
+      from: (new Error().stack ?? "").split("\n").slice(2, 5).map((s) => s.trim()).join(" | ")
+    });
     this.root = root;
     this.header = header;
     this.viewArea = viewArea;
@@ -17416,6 +17494,7 @@ var splitStore = {
     this.savedMarginLeft = viewArea.style.marginLeft;
     this.savedMarginRight = viewArea.style.marginRight;
     this.savedMarginTop = viewArea.style.marginTop;
+    this.yieldStrikes = 0;
     this.refreshGeom();
     if (this.geom) {
       const minContent = main.reduce((a, p) => a + p.min, 0) + Math.max(0, main.length - 1) * GAP;
@@ -17483,9 +17562,22 @@ var splitStore = {
     this.fallback.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-phase"] });
     this.yieldObserver = new MutationObserver(() => {
       if (!this.active || !this.viewArea) return;
-      if (this.viewArea.style.marginLeft !== this.lastMarginLeft || this.viewArea.style.marginRight !== this.lastMarginRight || this.viewArea.style.marginTop !== this.lastMarginTop) {
-        this.close();
+      const got = [this.viewArea.style.marginLeft, this.viewArea.style.marginRight, this.viewArea.style.marginTop];
+      const want = [this.lastMarginLeft, this.lastMarginRight, this.lastMarginTop];
+      if (got[0] === want[0] && got[1] === want[1] && got[2] === want[2]) {
+        this.yieldStrikes = 0;
+        return;
       }
+      this.yieldStrikes += 1;
+      wtGeom("yield", { id: this.spec?.id, want, got, strikes: this.yieldStrikes });
+      if (this.yieldStrikes <= 3) {
+        try {
+          this.applyMargin();
+        } catch {
+        }
+        return;
+      }
+      this.close();
     });
     this.yieldObserver.observe(viewArea, { attributes: true, attributeFilter: ["style"] });
     this.active = true;
@@ -17724,27 +17816,75 @@ var splitStore = {
     this.persist();
     this.notify();
   },
+  /** 对指定窗格套用变更；窗格不存在或返回值不变（===）→ null（未命中历史 = 真正的无操作） */
+  mutatePane(row, i, mutate) {
+    const spec = this.spec;
+    if (!spec) return null;
+    if (row === "left") {
+      if (!spec.left || i !== 0) return null;
+      const pane2 = mutate(spec.left);
+      return pane2 === spec.left ? null : { ...spec, left: pane2 };
+    }
+    if (row === "top") {
+      const top = [...spec.top ?? []];
+      if (!top[i]) return null;
+      const pane2 = mutate(top[i]);
+      if (pane2 === top[i]) return null;
+      top[i] = pane2;
+      return { ...spec, top };
+    }
+    const main = [...spec.main];
+    if (!main[i]) return null;
+    const pane = mutate(main[i]);
+    if (pane === main[i]) return null;
+    main[i] = pane;
+    return { ...spec, main };
+  },
   closeTab(row, i, tabId) {
     const spec = this.spec;
     if (!spec) return;
     const mutate = (pane) => {
-      const tabs = (pane.tabs ?? []).filter((t) => t.id !== tabId);
-      return { ...pane, tabs, active: 0 };
+      const list2 = pane.tabs ?? [];
+      const removed = list2.find((t) => t.id === tabId);
+      if (!removed) return pane;
+      const tabs = list2.filter((t) => t.id !== tabId);
+      const closedTabs = [removed, ...(pane.closedTabs ?? []).filter((t) => t.id !== removed.id)].slice(0, CLOSED_TAB_CAP);
+      return { ...pane, tabs, active: 0, closedTabs };
     };
-    if (row === "left") {
-      if (!spec.left || i !== 0) return;
-      this.spec = { ...spec, left: mutate(spec.left) };
-    } else if (row === "top") {
-      const top = [...spec.top ?? []];
-      if (!top[i]) return;
-      top[i] = mutate(top[i]);
-      this.spec = { ...spec, top };
-    } else {
-      const main = [...spec.main];
-      if (!main[i]) return;
-      main[i] = mutate(main[i]);
-      this.spec = { ...spec, main };
-    }
+    const next = this.mutatePane(row, i, mutate);
+    if (!next) return;
+    this.spec = next;
+    this.onSpecMutated?.(this.spec);
+    this.persist();
+    this.notify();
+  },
+  /** 恢复最近关闭的标签：原样放回（保留原 id/标题/内容），并把它移出历史；未命中 = 无操作 */
+  restoreClosedTab(row, i, tabId) {
+    const spec = this.spec;
+    if (!spec) return;
+    const mutate = (pane) => {
+      const closed = pane.closedTabs ?? [];
+      const idx = closed.findIndex((t) => t.id === tabId);
+      if (idx < 0) return pane;
+      const tabs = [...pane.tabs ?? []];
+      if (tabs.some((t) => t.id === tabId)) return pane;
+      tabs.push(closed[idx]);
+      return { ...pane, content: null, tabs, active: tabs.length - 1, closedTabs: closed.filter((_, k) => k !== idx) };
+    };
+    const next = this.mutatePane(row, i, mutate);
+    if (!next) return;
+    this.spec = next;
+    this.onSpecMutated?.(this.spec);
+    this.persist();
+    this.notify();
+  },
+  /** 存量救援回填（活 spec 通道）：把产物登记为空窗格的可恢复项（只登记不挂载） */
+  seedRestore(row, i, content) {
+    const spec = this.spec;
+    if (!spec) return;
+    const next = seedPaneRestore(spec, row, i, content);
+    if (!next) return;
+    this.spec = next;
     this.onSpecMutated?.(this.spec);
     this.persist();
     this.notify();
@@ -17883,6 +18023,7 @@ var splitStore = {
     persistSaved(this.spec.id, { chatW: this.chatW, topH: this.topH, leftW: this.leftW, paneWs: this.paneWs, topWs: this.topWs, leftWs: this.leftWs });
   },
   close() {
+    wtGeom("close", { id: this.spec?.id, from: (new Error().stack ?? "").split("\n").slice(2, 5).map((s) => s.trim()).join(" | ") });
     if (this.root && this.root.isConnected) {
       if (this.savedWidthVar) this.root.style.setProperty("--dsh-chat-user-width", this.savedWidthVar);
       else this.root.style.removeProperty("--dsh-chat-user-width");
@@ -17918,7 +18059,10 @@ var splitStore = {
 if (typeof document !== "undefined" && document.body) {
   const taObserver = new MutationObserver(() => {
     if (!splitStore.active) return;
-    if (document.querySelector(".ta_split")) splitStore.close();
+    if (document.querySelector(".ta_split")) {
+      wtGeom("ta-split", { id: splitStore.spec?.id });
+      splitStore.close();
+    }
   });
   taObserver.observe(document.body, { childList: true, subtree: true });
 }
@@ -19570,12 +19714,12 @@ function refreshableTab(t) {
   return c.kind === "iframe" || c.kind === "builtin" && (c.type === "browser" || c.type === "anim");
 }
 function PaneBody(props) {
-  const { pane, row, index } = props;
+  const { pane, row, index, projectId } = props;
   const tabs = pane.tabs ?? [];
   const active = Math.min(pane.active ?? 0, Math.max(0, tabs.length - 1));
   const [reloadKeys, setReloadKeys] = (0, import_react.useState)({});
   if (tabs.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PanePicker, { row, index });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PanePicker, { pane, row, index, projectId });
   }
   const refreshTab = (t) => {
     setReloadKeys((m) => ({ ...m, [t.id]: (m[t.id] ?? 0) + 1 }));
@@ -19642,7 +19786,36 @@ function PaneBody(props) {
 }
 function PanePicker(props) {
   const [mode, setMode] = (0, import_react.useState)("grid");
+  const [products, setProducts] = (0, import_react.useState)([]);
   const hostRef = (0, import_react.useRef)(null);
+  (0, import_react.useEffect)(() => {
+    let alive = true;
+    const load = () => {
+      const p = splitEnv?.widgets?.products?.(props.projectId);
+      if (!p) {
+        setProducts([]);
+        return;
+      }
+      Promise.resolve(p).then((l) => {
+        if (alive) setProducts((l ?? []).slice(0, PRODUCT_SHOW));
+      }).catch(() => {
+        if (alive) setProducts([]);
+      });
+    };
+    load();
+    let un;
+    try {
+      un = splitEnv?.widgets?.subscribe?.(props.projectId, load);
+    } catch {
+    }
+    return () => {
+      alive = false;
+      try {
+        un?.();
+      } catch {
+      }
+    };
+  }, [props.projectId]);
   (0, import_react.useEffect)(() => {
     const el = hostRef.current;
     if (!el) return;
@@ -19658,26 +19831,140 @@ function PanePicker(props) {
     return () => ro.disconnect();
   }, []);
   const pick = (content) => splitStore.openTab(props.row, props.index, content);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: hostRef, className: "dsh-wt_panePicker dsh-wt_panePicker-" + mode, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "browser" }), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F310}" }),
-      T("pane.browser")
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "anim" }), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F3AC}" }),
-      T("pane.anim")
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "explorer" }), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F4C1}" }),
-      T("pane.explorer")
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "terminal" }), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u25B8_" }),
-      T("pane.terminal")
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "custom" }), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u2728" }),
-      T("pane.custom")
+  const closed = (props.pane.closedTabs ?? []).slice(0, CLOSED_TAB_SHOW);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_panePickerWrap", children: [
+    closed.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_paneRestore", children: closed.map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: "dsh-wt_paneRestoreBtn",
+        title: T("pane.restoreTitle"),
+        onClick: () => splitStore.restoreClosedTab(props.row, props.index, t.id),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u21A9" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "dsh-wt_paneRestoreName", children: [
+            T("pane.restore"),
+            "\uFF1A",
+            t.title
+          ] })
+        ]
+      },
+      t.id
+    )) }),
+    products.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_paneRestore", children: products.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: "dsh-wt_paneRestoreBtn dsh-wt_paneProductBtn",
+        title: T("pane.productTitle", { name: p.title }),
+        onClick: () => {
+          try {
+            splitEnv?.widgets?.mountProduct(props.projectId, p.key, props.row, props.index);
+          } catch {
+          }
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F4E6}" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "dsh-wt_paneRestoreName", children: [
+            T("pane.products"),
+            "\uFF1A",
+            p.title
+          ] })
+        ]
+      },
+      p.key
+    )) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: hostRef, className: "dsh-wt_panePicker dsh-wt_panePicker-" + mode, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "browser" }), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F310}" }),
+        T("pane.browser")
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "anim" }), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F3AC}" }),
+        T("pane.anim")
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "explorer" }), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F4C1}" }),
+        T("pane.explorer")
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "terminal" }), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u25B8_" }),
+        T("pane.terminal")
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "custom" }), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u2728" }),
+        T("pane.custom")
+      ] })
+    ] })
+  ] });
+}
+function WidgetMenu(props) {
+  const [items, setItems] = (0, import_react.useState)(null);
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const refresh = (0, import_react.useCallback)(() => {
+    const p = splitEnv?.widgets?.list(props.projectId);
+    if (!p) {
+      setItems([]);
+      return;
+    }
+    Promise.resolve(p).then((l) => setItems(l ?? [])).catch(() => setItems([]));
+  }, [props.projectId]);
+  (0, import_react.useEffect)(() => {
+    refresh();
+    let un;
+    try {
+      un = splitEnv?.widgets?.subscribe?.(props.projectId, refresh);
+    } catch {
+    }
+    return () => {
+      try {
+        un?.();
+      } catch {
+      }
+    };
+  }, [refresh]);
+  if (!items || items.length === 0) return null;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        className: "dsh-wt_widgetBtn",
+        title: T("widget.list"),
+        "aria-label": T("widget.list"),
+        "aria-expanded": open,
+        onClick: () => {
+          setOpen((v) => !v);
+          refresh();
+        },
+        children: "\u{1F4E6}"
+      }
+    ),
+    open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_widgetPop", role: "menu", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_widgetHead", children: T("widget.title") }),
+      items.map((it) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "dsh-wt_widgetRow",
+          disabled: !it.mountable,
+          title: it.mountable ? it.title : T("widget.noPane"),
+          onClick: () => {
+            try {
+              splitEnv?.widgets?.mount(props.projectId, it.index);
+            } catch {
+            }
+            ;
+            setOpen(false);
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_widgetWin", children: it.window }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_widgetName", children: it.title })
+          ]
+        },
+        it.index
+      ))
     ] })
   ] });
 }
@@ -19759,7 +20046,7 @@ function WorkspaceLayer(props) {
               children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_paneTitle", children: it.pane.title })
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PaneBody, { pane: it.pane, row, index }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PaneBody, { pane: it.pane, row, index, projectId: spec.id }),
           !singleConsole && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
@@ -19792,6 +20079,7 @@ function WorkspaceLayer(props) {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_splitBar", style: { position: "fixed", left: g.left, top: barTop, width: hasLeft || chatFull ? contentW : hasTop ? colW : contentW, zIndex: 70 }, children: [
       spec.id !== "wt-console" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_splitTitle", children: spec.title }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(WidgetMenu, { projectId: spec.id }),
       !hasLeft && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
         {
@@ -19936,7 +20224,7 @@ function SplitWorkspace() {
   }) });
 }
 try {
-  window.__dshWorktable = { splitStore };
+  window.__dshWorktable = { splitStore, seedPaneRestore };
 } catch {
 }
 
@@ -20390,6 +20678,70 @@ var registryStore = { ids: [], listeners: /* @__PURE__ */ new Set() };
 var sessionBridge = null;
 var clientCtx = null;
 var hostApi = null;
+function mainViewSessionChannel() {
+  try {
+    const uw = clientCtx?.get?.("uiWorkspace");
+    if (uw && typeof uw.openSession === "function") {
+      return {
+        open: (id) => {
+          uw.openSession(id);
+        },
+        current: () => {
+          try {
+            return uw.selection?.getSnapshot?.()?.sessionId ?? "";
+          } catch {
+            return "";
+          }
+        }
+      };
+    }
+  } catch {
+  }
+  return {
+    open: (id) => {
+      const fn = sessionBridge?.sessions?.open;
+      if (typeof fn === "function") fn.call(sessionBridge.sessions, id);
+    },
+    current: () => {
+      try {
+        return sessionBridge?.list?.getSnapshot?.()?.current ?? "";
+      } catch {
+        return "";
+      }
+    }
+  };
+}
+function openMainSession(sessionId) {
+  if (!sessionId) return false;
+  try {
+    mainViewSessionChannel().open(sessionId);
+    ensureMainSessionWatch();
+    return true;
+  } catch {
+    return false;
+  }
+}
+function currentMainSessionId() {
+  try {
+    return mainViewSessionChannel().current() ?? "";
+  } catch {
+    return "";
+  }
+}
+var mainSessionWatchDispose = null;
+var mainSessionWatchRef = { list: null };
+function ensureMainSessionWatch() {
+  if (mainSessionWatchDispose) return;
+  try {
+    const selection = clientCtx?.get?.("uiWorkspace")?.selection;
+    if (!selection || typeof selection.subscribe !== "function") return;
+    const dispose = selection.subscribe(() => syncSessionScope(mainSessionWatchRef.list));
+    mainSessionWatchDispose = typeof dispose === "function" ? dispose : () => {
+    };
+  } catch {
+    mainSessionWatchDispose = null;
+  }
+}
 async function ensureSessionPreset(sessionId) {
   const api = hostApi?.agentPresets;
   if (!api || typeof api.list !== "function" || typeof api.select !== "function") return;
@@ -20457,7 +20809,7 @@ async function ensureSessionModel(sessionId) {
     let target = null;
     let effort;
     try {
-      const cur = sessionBridge?.list?.getSnapshot?.()?.current;
+      const cur = currentMainSessionId();
       if (cur && cur !== sessionId) {
         const cRes = await api.models({ sessionId: cur });
         if (cRes?.result?.ok) {
@@ -20680,11 +21032,29 @@ function isSubagentSessionId(sid) {
     return false;
   }
 }
+function normProjectFolder(p) {
+  const s = String(p ?? "").trim().replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  return /^[a-zA-Z]:/.test(s) ? s.toLowerCase() : s;
+}
+function pickProjectSession(folder, binding, workspaces, byId, subagentIds) {
+  const sub = subagentIds ?? /* @__PURE__ */ new Set();
+  const bind = String(binding ?? "");
+  if (bind && !sub.has(bind)) return bind;
+  const want = normProjectFolder(String(folder ?? ""));
+  if (!want) return null;
+  const ws = (workspaces?.items ?? []).find((w) => normProjectFolder(String(w?.path ?? "")) === want);
+  if (!ws) return null;
+  const archived = new Set((workspaces?.archivedSessionIds ?? []).map(String));
+  const ids = (ws.sessionIds ?? []).map(String).filter((sid) => sid && !archived.has(sid) && !sub.has(sid));
+  if (ids.length === 0) return null;
+  const loaded = byId ?? {};
+  return ids.find((sid) => !!loaded[sid]) ?? ids[0];
+}
 async function fetchSessionGroups() {
   try {
     const snap = sessionBridge?.list?.getSnapshot?.();
     const byId = snap?.byId ?? {};
-    const current = snap?.current ?? "";
+    const current = currentMainSessionId() || (snap?.current ?? "");
     const subKids = subagentSessionIds(snap);
     const titleOf = (sid) => byId[sid]?.title ?? byId[sid]?.displayTitle ?? sid;
     const mk = (sid) => ({ id: sid, title: titleOf(sid), isCurrent: sid === current });
@@ -20848,10 +21218,7 @@ async function createCustomSession(projectId, projectName, requirement, group, w
   await ensureSessionPreset(sessionId);
   await ensureSessionModel(sessionId);
   markPluginSessionOpen(sessionId);
-  try {
-    await b.sessions.open?.(sessionId);
-  } catch {
-  }
+  openMainSession(sessionId);
   await promptIntoSession(sessionId, text2);
   return sessionId;
 }
@@ -20860,10 +21227,7 @@ async function sendCustomToSession(sessionId, projectId, projectName, requiremen
   if (!b) throw new Error("bridge unavailable");
   const text2 = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, "send");
   markPluginSessionOpen(sessionId);
-  try {
-    await b.sessions.open?.(sessionId);
-  } catch {
-  }
+  openMainSession(sessionId);
   await promptIntoSession(sessionId, text2);
 }
 var projectAttachRef = { sessionId: null, attached: null };
@@ -20920,6 +21284,72 @@ function recordMountedWidget(projectId, raw) {
   } catch {
   }
 }
+var widgetManifestCache = { current: {} };
+var widgetListeners = /* @__PURE__ */ new Map();
+function notifyWidgets(projectId) {
+  delete productCache.current[projectId];
+  const set = widgetListeners.get(projectId);
+  if (!set) return;
+  for (const fn of [...set]) {
+    try {
+      fn();
+    } catch {
+    }
+  }
+}
+async function readWidgetManifest(projectId, folder, force = false) {
+  if (!force && widgetManifestCache.current[projectId] !== void 0) return widgetManifestCache.current[projectId];
+  try {
+    const r = await fetch("/api/worktable/file?path=" + encodeURIComponent(joinPath(folder, "widget-result.json")), { cache: "no-store" });
+    const raw = r.ok ? (await r.text()).trim() : "";
+    widgetManifestCache.current[projectId] = raw;
+    return raw;
+  } catch {
+    return widgetManifestCache.current[projectId] ?? "";
+  }
+}
+function widgetTitleOf(it) {
+  const p = String(it?.path ?? "").trim();
+  if (it?.kind === "url") return p;
+  return basenameOf(p) || p;
+}
+var productCache = { current: {} };
+function htmlProductCandidates(top, children) {
+  const isHtml = (n) => /\.html?$/i.test(n);
+  const out = [];
+  for (const e of top ?? []) {
+    if (!e || e.isDir || !isHtml(String(e.name ?? ""))) continue;
+    out.push({ key: "f:" + e.path, title: String(e.name), kind: "html" });
+  }
+  for (const dir of children ?? []) {
+    for (const e of dir?.entries ?? []) {
+      if (!e || e.isDir || !isHtml(String(e.name ?? ""))) continue;
+      out.push({ key: "f:" + e.path, title: String(dir.name) + "/" + String(e.name), kind: "html" });
+    }
+  }
+  return out.slice(0, 12);
+}
+async function scanHtmlProducts(folder) {
+  const SKIP = /* @__PURE__ */ new Set([".git", ".dsh", "node_modules"]);
+  const listDir = async (path) => {
+    try {
+      const r = await fetch("/api/worktable/fs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path })
+      });
+      const d = await r.json();
+      return Array.isArray(d?.entries) ? d.entries : [];
+    } catch {
+      return [];
+    }
+  };
+  const top = await listDir(folder);
+  const dirs = top.filter((e) => e?.isDir && !SKIP.has(String(e.name)) && !String(e.name).startsWith(".")).slice(0, 8);
+  const children = [];
+  for (const d of dirs) children.push({ name: String(d.name), entries: await listDir(String(d.path)) });
+  return htmlProductCandidates(top, children);
+}
 function windowLabelToPane(spec, label) {
   const m = /^窗口(\d+)$/.exec(String(label ?? "").trim());
   if (!m) return null;
@@ -20974,7 +21404,7 @@ function sessionNotifyState(entry) {
 function syncSessionScope(list2) {
   try {
     const snap = list2.getSnapshot();
-    const current = snap?.current ?? "";
+    const current = currentMainSessionId() || (snap?.current ?? "");
     const entry = snap?.byId?.[current] ?? snap?.items?.find((it) => it.sessionId === current) ?? null ?? null;
     const cat = snap?.subagentsByParent?.[current];
     let subagents = [];
@@ -21452,21 +21882,41 @@ function WorktableSection(props) {
           const view2 = pr.views[id];
           if (view2 || layout) actionsRef.current?.openSplit(view2 ?? layout);
           else {
-            const bound = pr.bindings[id];
-            if (bound) {
-              try {
-                sessionBridge?.sessions?.open?.(bound);
-              } catch {
-              }
-            }
+            const target = resolveProjectTarget(id);
+            if (target) openMainSession(target);
           }
         },
         onJump: (id) => {
           const sid = projectsRef.current.projects.bindings[id];
           if (!sid) return;
           markPluginSessionOpen(sid);
+          openMainSession(sid);
+        }
+      },
+      // 项目产物清单（widget-result.json）：分栏标题栏「📦」按钮的数据与动作
+      widgets: {
+        subscribe: (pid, fn) => {
+          let set = widgetListeners.get(pid);
+          if (!set) {
+            set = /* @__PURE__ */ new Set();
+            widgetListeners.set(pid, set);
+          }
+          set.add(fn);
+          return () => {
+            const s = widgetListeners.get(pid);
+            if (!s) return;
+            s.delete(fn);
+            if (s.size === 0) widgetListeners.delete(pid);
+          };
+        },
+        list: (pid) => listWidgetEntries(pid),
+        mount: (pid, index) => {
+          void mountWidgetEntry(pid, index);
+        },
+        products: (pid) => listProducts(pid),
+        mountProduct: (pid, key, row, paneIndex) => {
           try {
-            sessionBridge?.sessions?.open?.(sid);
+            mountProductInto(pid, key, row, paneIndex);
           } catch {
           }
         }
@@ -21525,12 +21975,7 @@ function WorktableSection(props) {
     if (!splitStore.active) {
       if (!suppressRestoreRef.current) {
         const prev = projectAttachRef.sessionId;
-        if (prev) {
-          try {
-            sessionBridge?.sessions?.open?.(prev);
-          } catch {
-          }
-        }
+        if (prev) openMainSession(prev);
       }
       projectAttachRef.sessionId = null;
       projectAttachRef.attached = null;
@@ -21680,24 +22125,30 @@ function WorktableSection(props) {
       req
     ].join("\n");
   }
+  const resolveProjectTarget = (0, import_react2.useCallback)((projectId) => {
+    const pr = projectsRef.current.projects;
+    let workspaces = null;
+    let byId = {};
+    let sub = /* @__PURE__ */ new Set();
+    try {
+      workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null;
+      const snap = sessionBridge?.list?.getSnapshot?.();
+      byId = snap?.byId ?? {};
+      sub = subagentSessionIds(snap);
+    } catch {
+    }
+    return pickProjectSession(pr.folders[projectId] ?? null, pr.bindings[projectId] ?? null, workspaces, byId, sub);
+  }, []);
   const openSplit = (0, import_react2.useCallback)((spec) => {
     engineIdsRef.current.add(spec.id);
     splitStore.open(projects.views[spec.id] ?? spec);
     if (splitStore.active && splitStore.spec?.id === spec.id) {
       let prev = null;
-      try {
-        prev = sessionBridge?.list?.getSnapshot?.()?.current ?? null;
-      } catch {
-      }
+      prev = currentMainSessionId() || null;
       projectAttachRef.sessionId = prev;
-      projectAttachRef.attached = projectsRef.current.projects.bindings[spec.id] ?? prev;
-      const bound = projectsRef.current.projects.bindings[spec.id];
-      if (bound && !isSubagentSessionId(bound)) {
-        try {
-          sessionBridge?.sessions?.open?.(bound);
-        } catch {
-        }
-      }
+      const target = resolveProjectTarget(spec.id);
+      projectAttachRef.attached = target ?? prev;
+      if (target) openMainSession(target);
       ackProjectNotify(spec.id);
       const pending = pendingMountRef.current[spec.id];
       if (pending) {
@@ -21728,20 +22179,12 @@ function WorktableSection(props) {
     splitStore.open(spec);
     if (splitStore.active && splitStore.spec?.id === CONSOLE_ID) {
       let prev = null;
-      try {
-        prev = sessionBridge?.list?.getSnapshot?.()?.current ?? null;
-      } catch {
-      }
+      prev = currentMainSessionId() || null;
       projectAttachRef.sessionId = prev;
       const raw = explicitBound !== void 0 ? explicitBound : projectsRef.current.projects.bindings[CONSOLE_ID];
       const bound = raw && !isSubagentSessionId(raw) ? raw : null;
       projectAttachRef.attached = bound ?? prev;
-      if (bound) {
-        try {
-          sessionBridge?.sessions?.open?.(bound);
-        } catch {
-        }
-      }
+      if (bound) openMainSession(bound);
       ackProjectNotify(CONSOLE_ID);
       try {
         notifyConsole();
@@ -21996,9 +22439,7 @@ function WorktableSection(props) {
     try {
       let raw = rawManifest;
       if (raw == null) {
-        const r = await fetch("/api/worktable/file?path=" + encodeURIComponent(joinPath(folder, "widget-result.json")), { cache: "no-store" });
-        if (!r.ok) return;
-        raw = (await r.text()).trim();
+        raw = await readWidgetManifest(projectId, folder, true);
       }
       if (!raw) return;
       let d = null;
@@ -22021,7 +22462,11 @@ function WorktableSection(props) {
         if (targets.some((t2) => t2.row === row && t2.index === index)) continue;
         targets.push({ row, index, content });
       }
-      if (!targets.length) return;
+      if (!targets.length) {
+        notifyWidgets(projectId);
+        return;
+      }
+      notifyWidgets(projectId);
       if (open) {
         let allOk = true;
         for (const t2 of targets) {
@@ -22042,7 +22487,134 @@ function WorktableSection(props) {
   const tryAutoMount = (0, import_react2.useCallback)(async (projectId, sid) => {
     void sid;
     await applyWidgetManifest(projectId, null);
+    notifyWidgets(projectId);
   }, [applyWidgetManifest]);
+  const listWidgetEntries = (0, import_react2.useCallback)(async (projectId) => {
+    const folder = projectsRef.current.projects.folders[projectId];
+    if (!folder) return [];
+    const raw = await readWidgetManifest(projectId, folder);
+    if (!raw) return [];
+    let d = null;
+    try {
+      d = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+    const items = Array.isArray(d) ? d : [d];
+    const open = splitStore.active && splitStore.spec?.id === projectId;
+    const spec = open ? splitStore.spec : projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId) ?? null;
+    const out = [];
+    items.forEach((it, i) => {
+      if (!it) return;
+      const content = buildMountContent(folder, it);
+      const pane = content ? windowLabelToPane(spec, it.window) : null;
+      out.push({
+        index: i,
+        window: String(it?.window ?? ""),
+        title: widgetTitleOf(it),
+        kind: String(it?.kind ?? "html"),
+        mountable: !!(pane && paneExists(spec, pane.row, pane.index))
+      });
+    });
+    return out;
+  }, []);
+  const mountWidgetEntry = (0, import_react2.useCallback)(async (projectId, index) => {
+    const folder = projectsRef.current.projects.folders[projectId];
+    if (!folder) return;
+    const raw = widgetManifestCache.current[projectId];
+    if (!raw) return;
+    let d = null;
+    try {
+      d = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const items = Array.isArray(d) ? d : [d];
+    const entry = items[index];
+    if (!entry) return;
+    await applyWidgetManifest(projectId, JSON.stringify(entry));
+    recordMountedWidget(projectId, raw);
+  }, [applyWidgetManifest]);
+  const listProducts = (0, import_react2.useCallback)(async (projectId) => {
+    const cached = productCache.current[projectId];
+    if (cached) return cached;
+    const folder = projectsRef.current.projects.folders[projectId];
+    if (!folder) return [];
+    const raw = await readWidgetManifest(projectId, folder);
+    let out = [];
+    if (raw) {
+      let d = null;
+      try {
+        d = JSON.parse(raw);
+      } catch {
+      }
+      const items = Array.isArray(d) ? d : d ? [d] : [];
+      out = items.map((it, i) => ({ key: "m:" + i, title: widgetTitleOf(it), kind: String(it?.kind ?? "html") })).filter((x) => !!x.title);
+    } else {
+      out = await scanHtmlProducts(folder);
+    }
+    productCache.current[projectId] = out;
+    return out;
+  }, []);
+  const mountProductInto = (0, import_react2.useCallback)((projectId, key, row, paneIndex) => {
+    const folder = projectsRef.current.projects.folders[projectId];
+    if (!folder) return;
+    let content = null;
+    if (key.startsWith("m:")) {
+      let d = null;
+      try {
+        d = JSON.parse(widgetManifestCache.current[projectId] ?? "null");
+      } catch {
+      }
+      const items = Array.isArray(d) ? d : d ? [d] : [];
+      const it = items[Number(key.slice(2))];
+      if (it) content = buildMountContent(folder, it);
+    } else if (key.startsWith("f:")) {
+      const abs = key.slice(2);
+      if (abs) content = buildMountContent(folder, { path: abs, kind: "html" });
+    }
+    if (!content) return;
+    splitStore.lockPane(row, paneIndex, content);
+  }, []);
+  const seedRestoreFromManifest = (0, import_react2.useCallback)((projectId, raw) => {
+    const folder = projectsRef.current.projects.folders[projectId];
+    if (!folder || !raw) return;
+    let d = null;
+    try {
+      d = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const items = Array.isArray(d) ? d : [d];
+    if (splitStore.active && splitStore.spec?.id === projectId) {
+      for (const it of items) {
+        if (!it) continue;
+        const content = buildMountContent(folder, it);
+        if (!content) continue;
+        const pane = windowLabelToPane(splitStore.spec, it.window);
+        if (!pane) continue;
+        splitStore.seedRestore(pane.row, pane.index, content);
+      }
+      return;
+    }
+    const saved = projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId);
+    if (!saved) return;
+    let next = saved;
+    for (const it of items) {
+      if (!it) continue;
+      const content = buildMountContent(folder, it);
+      if (!content) continue;
+      const pane = windowLabelToPane(saved, it.window);
+      if (!pane) continue;
+      const seeded = seedPaneRestore(next, pane.row, pane.index, content);
+      if (seeded) next = seeded;
+    }
+    if (next === saved) return;
+    persistProjects((prev) => {
+      if (prev.layouts.some((l) => l.id === projectId)) return { ...prev, layouts: prev.layouts.map((l) => l.id === projectId ? next : l) };
+      return { ...prev, views: { ...prev.views, [projectId]: next } };
+    });
+  }, []);
   (0, import_react2.useEffect)(() => {
     const byId = sessionsSnapshotStore.snapshot?.byId ?? {};
     for (const [pid, sid] of Object.entries(projects.bindings)) {
@@ -22070,10 +22642,14 @@ function WorktableSection(props) {
         const folder = folders[pid];
         if (!folder) continue;
         try {
-          const r = await fetch("/api/worktable/file?path=" + encodeURIComponent(joinPath(folder, "widget-result.json")), { cache: "no-store" });
-          if (!r.ok) continue;
-          const raw = (await r.text()).trim();
-          if (!raw) continue;
+          const raw = await readWidgetManifest(pid, folder, true);
+          if (cancelled) return;
+          if (!raw) {
+            notifyWidgets(pid);
+            continue;
+          }
+          seedRestoreFromManifest(pid, raw);
+          notifyWidgets(pid);
           if (mountedWidgetRef.current[pid] === raw) continue;
           await applyWidgetManifest(pid, raw);
         } catch {
@@ -22083,7 +22659,7 @@ function WorktableSection(props) {
     return () => {
       cancelled = true;
     };
-  }, [projects.folders, applyWidgetManifest]);
+  }, [projects.folders, applyWidgetManifest, seedRestoreFromManifest]);
   const collectKids = (0, import_react2.useCallback)((sid) => {
     const kids = /* @__PURE__ */ new Set();
     const snap = sessionsSnapshotStore.snapshot;
@@ -22501,13 +23077,8 @@ function WorktableSection(props) {
         reportUsed(pid);
         return;
       }
-      const bound = projectsRef.current.projects.bindings[pid];
-      if (bound) {
-        try {
-          sessionBridge?.sessions?.open?.(bound);
-        } catch {
-        }
-      }
+      const targetSession = resolveProjectTarget(pid);
+      if (targetSession) openMainSession(targetSession);
       ackProjectNotify(pid);
     };
     document.addEventListener("click", onDocClick, true);
@@ -22601,13 +23172,8 @@ function WorktableSection(props) {
     const view2 = pr.views[id];
     if (view2 || layout) openSplit(view2 ?? layout);
     else {
-      const bound = pr.bindings[id];
-      if (bound) {
-        try {
-          sessionBridge?.sessions?.open?.(bound);
-        } catch {
-        }
-      }
+      const target = resolveProjectTarget(id);
+      if (target) openMainSession(target);
     }
   };
   if (!wide) {
@@ -23418,7 +23984,15 @@ function apply(ctx) {
   } catch {
   }
   try {
-    window.__dshOpenSession = (id) => ctx.sessions?.open?.(id);
+    window.__dshOpenSession = (id) => openMainSession(id);
+    window.__dshCurrentMainSession = () => currentMainSessionId();
+    window.__dshUiWorkspace = () => {
+      try {
+        return ctx.get?.("uiWorkspace") ?? null;
+      } catch {
+        return null;
+      }
+    };
     window.__dshSessions = ctx.sessions;
     window.__dshPromptIntoSession = (id, text2) => promptIntoSession(id, text2);
     window.__dshWorkspaces = ctx.workspaces;
@@ -23483,6 +24057,18 @@ function apply(ctx) {
     const disposeScope = sessionsList.subscribe(() => syncSessionScope(sessionsList));
     ctx.effect(() => disposeScope, "dsh-worktable: session scope watch");
   }
+  mainSessionWatchRef.list = sessionsList;
+  ctx.effect(() => {
+    ensureMainSessionWatch();
+    return () => {
+      try {
+        mainSessionWatchDispose?.();
+      } catch {
+      }
+      ;
+      mainSessionWatchDispose = null;
+    };
+  }, "dsh-worktable: main session watch");
   ctx.slots.inject("shell.overlay", () => ctx.slots.register({
     name: "shell.overlay",
     id: "dsh-worktable-split",

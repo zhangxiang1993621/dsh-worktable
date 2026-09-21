@@ -360,6 +360,25 @@ export const css = xtermCss + '\n' + [
   '.dsh-wt_paneWipText{font-size:11px}',
   '.dsh-wt_splitFlip{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:13px;cursor:pointer}',
   '.dsh-wt_splitFlip:hover{color:var(--dsw-alias-label-primary,#e6e8eb);background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06))}',
+  // 窗格关空后的「↩ 恢复」：选择器上方的恢复按钮（只在有历史时渲染）
+  '.dsh-wt_panePickerWrap{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;overflow:auto}',
+  '.dsh-wt_panePickerWrap .dsh-wt_panePicker{flex:none;padding:0;overflow:visible}',
+  '.dsh-wt_paneRestore{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%;max-width:320px}',
+  '.dsh-wt_paneRestoreBtn{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 10px;border:1px dashed var(--dsw-alias-border-l1,#262b36);border-radius:8px;background:var(--dsw-alias-fill-l1,rgba(255,255,255,.02));color:var(--dsw-alias-label-primary,#e6e8eb);font:inherit;font-size:11px;line-height:15px;cursor:pointer;transition:border-color .15s,background .15s}',
+  '.dsh-wt_paneRestoreBtn:hover{border-color:var(--dsw-alias-state-accent-primary,#4f8ef7);background:var(--dsw-alias-fill-l1,rgba(255,255,255,.05))}',
+  '.dsh-wt_paneRestoreName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  // 本项目产物：实线边框（与虚线「↩ 恢复」区分），点一下挂到本窗格
+  '.dsh-wt_paneProductBtn{border-style:solid}',
+  // 分栏标题栏「📦 产物」：清单按钮 + 下拉（清单为空时整体不渲染）
+  '.dsh-wt_widgetBtn{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:12px;line-height:20px;cursor:pointer}',
+  '.dsh-wt_widgetBtn:hover{color:var(--dsw-alias-label-primary,#e6e8eb);background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06))}',
+  '.dsh-wt_widgetPop{position:absolute;right:0;top:100%;min-width:220px;max-width:340px;max-height:320px;overflow:auto;padding:6px;border:1px solid var(--dsw-alias-border-l1,#262b36);border-radius:8px;background:var(--dsw-alias-bg-base,#0b0e14);box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:80}',
+  '.dsh-wt_widgetHead{padding:4px 6px 6px;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}',
+  '.dsh-wt_widgetRow{display:flex;align-items:center;gap:8px;width:100%;min-width:0;padding:6px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary,#e6e8eb);font:inherit;font-size:12px;text-align:left;cursor:pointer}',
+  '.dsh-wt_widgetRow:hover:not(:disabled){background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06))}',
+  '.dsh-wt_widgetRow:disabled{opacity:.45;cursor:not-allowed}',
+  '.dsh-wt_widgetWin{flex:none;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}',
+  '.dsh-wt_widgetName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   // + 右侧弹出面板
   '.dsh-wt_popBackdrop{position:fixed;left:0;top:0;right:0;bottom:0;z-index:79;background:transparent}',
   // 删除二次确认（fixed 居中模态，压在弹窗之上）
