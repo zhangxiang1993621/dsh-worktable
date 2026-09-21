@@ -3378,6 +3378,7 @@ function buildCustomLayoutPrompt(req: string): string {
             <input
               className="dsh-wt_manageInput"
               autoFocus
+              onFocus={(e) => e.currentTarget.select()}
               value={cardRename.draft}
               placeholder={t('manage.renamePh')}
               onChange={(e) => setCardRename({ ...cardRename, draft: e.target.value })}

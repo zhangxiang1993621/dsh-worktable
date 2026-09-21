@@ -1780,6 +1780,13 @@ function ConsolePane() {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   /** 卡片 ⋯ 菜单：项目 id + 菜单坐标 + 触发按钮锚点（供后续弹层定位） */
   const [cardMenu, setCardMenu] = useState<{ id: string; x: number; y: number; right: number; top: number } | null>(null)
+  // 卡片菜单：Esc 关闭（挂 window：焦点不一定在菜单内，键盘用户也要能退出）
+  useEffect(() => {
+    if (!cardMenu) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCardMenu(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [cardMenu])
   const [bgEdit, setBgEdit] = useState<'plain' | 'glow' | 'photo' | null>(null)
   const [plainHsl, setPlainHslState] = useState<{ h: number; s: number; l: number }>(() => {
     const saved = splitEnv?.console?.getPlainHsl?.()
@@ -2170,7 +2177,7 @@ function ConsolePane() {
       {cardMenu && <div className="dsh-wt_dropMask" onClick={() => setCardMenu(null)} />}
       {cardMenu && (
         <div className="dsh-wt_menu dsh-wt_consoleCardMenu" style={{ position: 'fixed', left: cardMenu.x, top: cardMenu.y, width: 168, zIndex: 82 }}>
-          <button type="button" className="dsh-wt_cardMenuItem" onClick={() => {
+          <button type="button" className="dsh-wt_cardMenuItem" autoFocus onClick={() => {
             const it = cardMenu
             setCardMenu(null)
             env?.onCardAction(it.id, 'rename', { right: it.right, top: it.top })

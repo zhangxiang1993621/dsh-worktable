@@ -18420,6 +18420,14 @@ function ConsolePane() {
   const photoUrlRef = (0, import_react.useRef)("");
   const [openMenu, setOpenMenu] = (0, import_react.useState)(null);
   const [cardMenu, setCardMenu] = (0, import_react.useState)(null);
+  (0, import_react.useEffect)(() => {
+    if (!cardMenu) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setCardMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cardMenu]);
   const [bgEdit, setBgEdit] = (0, import_react.useState)(null);
   const [plainHsl, setPlainHslState] = (0, import_react.useState)(() => {
     const saved = splitEnv?.console?.getPlainHsl?.();
@@ -18891,7 +18899,7 @@ function ConsolePane() {
     openMenu !== null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_dropMask", onClick: () => setOpenMenu(null) }),
     cardMenu && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_dropMask", onClick: () => setCardMenu(null) }),
     cardMenu && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_menu dsh-wt_consoleCardMenu", style: { position: "fixed", left: cardMenu.x, top: cardMenu.y, width: 168, zIndex: 82 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "dsh-wt_cardMenuItem", onClick: () => {
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "dsh-wt_cardMenuItem", autoFocus: true, onClick: () => {
         const it = cardMenu;
         setCardMenu(null);
         env?.onCardAction(it.id, "rename", { right: it.right, top: it.top });
@@ -23767,6 +23775,7 @@ function WorktableSection(props) {
         {
           className: "dsh-wt_manageInput",
           autoFocus: true,
+          onFocus: (e) => e.currentTarget.select(),
           value: cardRename.draft,
           placeholder: t("manage.renamePh"),
           onChange: (e) => setCardRename({ ...cardRename, draft: e.target.value }),
