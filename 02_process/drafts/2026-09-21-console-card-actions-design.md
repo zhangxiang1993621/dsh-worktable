@@ -1,6 +1,30 @@
 # 控制室卡片动作：重命名 + 切换布局（最小版设计）
 
-> 2026-09-21 · dsh-worktable · 状态：**设计已获用户批准（方案 1），待实施**
+> 2026-09-21 · dsh-worktable · 状态：**已实现（自动化全绿；实机点击验收待重启 dsh web）**
+
+## 0. 实施记录（2026-09-21）
+
+落地文件：`01_content/src/client/consoleEdit.ts`（新，纯逻辑/几何 + `window.__dshWorktable` 合并导出）、
+`index.tsx`（import、`renameProject`/`applyLayoutChange` 改调纯函数、`cardRename` 弹层、`onCardAction`、
+`viewPickAnchor`/`setViewPick`/`viewPickPos`）、`split.tsx`（`onCardAction` 类型、卡片 ⋯ 按钮、本地菜单 +
+Esc、`popoverPos` 调用、调试出口改合并写入）、`locales.ts`（zh/en 各 4 键）、`styles.ts`（⋯/菜单/改名弹层
+样式含 circle 与浅色覆写）、`04_test/console-card-actions.test.mjs`（新）、
+`04_test/probe-console-card-actions.cjs`（新，实机）、`release-prep.mjs`（5c4 门禁）。
+
+自动化验证（均评估构建产物 `lib/client.js`；2026-09-21）：
+- `node 04_test/console-card-actions.test.mjs`：**先红**（`FAIL(export.renameOverride)`）→ 实现后 **4/4 passed**。
+  红→绿之间暴露一个真问题：`split.tsx` 的调试出口原是**整体覆盖**写入，而它现在 import `consoleEdit`
+  （后者先于本模块体求值），把纯函数冲掉——已改为合并写入，并写进 AGENTS.md 领域约定。
+- `node client-factory-gate.test.mjs` 10/10；`anchor-dom` 8/8；`session-switch-compat` 5/5；
+  `pane-restore` 5/5；`server-home` 3/3（该套件与 `npm run build` 都需要子进程/命名管道，
+  沙箱下 `spawnSync`/esbuild 报 EPERM，本机以 `danger-full-access` 一次性授权跑通，非代码回归）；
+  `node --check lib/client.js` / `lib/index.js` 通过。
+- 构建入口：`node build.mjs`（cwd = `01_content`；`npm run build` 在沙箱下会被 npm 子进程管道拦掉）。
+
+尚未验证（需重启 dsh web，客户端 bundle 启动时定版）：真实点击路径 `node 04_test/probe-console-card-actions.cjs`
+（侧栏 → 控制室入口卡 → 强制绑定「加入现有对话」→ 卡片 ⋯ → 菜单两项 → Esc → 改名 → 切换布局并断言
+`data-on` 高亮与拓扑变化）。探针用独立 headless Chrome + 私有 user-data-dir，不改用户浏览器状态。
+
 
 ## 1. 问题（用户诉求）
 
@@ -49,7 +73,8 @@
   (198,38) 到圆心 (118,118) 距离 ≈113 < 半径 118，仍落在圆内。
 - `onClick` 必须 `stopPropagation`：不得触发卡片自身的「打开项目」，也不得改 `activeTab`。
 - 点 ⋯ 弹**面板本地**小菜单（复用 `dsh-wt_pop` 样式语境）：两项
-  「✏️ 重命名」/「🧩 切换布局」；新 locale 键 `console.rename` / `console.changeLayout`（zh + en）。
+  「重命名」/「切换布局」（最终版去掉了草稿里的 ✏️/🧩 前缀：菜单是纯文字项，与插件其余菜单语言一致，
+  符合「默认克制」）；新 locale 键 `console.rename` / `console.changeLayout`（zh + en）。
 - **菜单必须 `position:fixed`**（坐标由 `popoverPos` 算出）：卡片自身是 `overflow:hidden`
   （styles.ts 586 行），任何挂在卡片内部的 absolute 菜单都会被裁掉。
 - 菜单关闭条件：选中任一项、点背景、Esc、控制室重渲染。关闭靠一层面板内透明 backdrop
@@ -92,13 +117,13 @@
 
 ## 5. 验收
 
-**TDD（先红后绿）**：抽取纯函数并新增 `04_test/layout-change.test.mjs`，断言对象 = 构建产物
+**TDD（先红后绿）**：抽取纯函数并新增 `04_test/console-card-actions.test.mjs`，断言对象 = 构建产物
 `lib/client.js`（沿用 `anchor-dom.test.mjs` 的假 DOM sandbox + `window.__dshWorktable` 导出钩子）：
 
-1. `migrateTabsInto(current, next)`：已有标签按序迁入各窗格 / 溢出并入最后一个窗格 /
-   无标签时不产生副作用 / 目标窗格为空时安全。
-2. `renameOverride(prev, id, name)`：非空写覆盖；纯空白删除覆盖（回退原名）。
-3. `popoverPos`：右侧越界、顶部越界、底部越界三种 clamp。
+1. `collectTabs(spec)` + `migrateTabsInto(next, sources)`：已有标签按序迁入各窗格 / 溢出并入最后一个窗格 /
+   无标签时不产生副作用 / 目标窗格为空时安全 / 空窗格不占位。
+2. `renameOverride(map, id, name)`：非空写覆盖；纯空白删除覆盖（回退原名）；不改原对象。
+3. `popoverPos(rect, size, viewport)`：右侧越界、顶部越界、底部越界三种 clamp + 常规值。
 
 **构建门禁**：`cd 01_content` → `npm run build` → `node --check lib/client.js` →
 `node --check lib/index.js`。
@@ -121,13 +146,17 @@ hover 卡片 → 点 ⋯ → 改名（断言卡片文本 + `localStorage` 的 `n
   本次不改变该行为。
 - 文档同步：完成后更新 `AGENTS.md` 控制室段（卡片动作一行）与本设计稿状态。
 
-## 7. 落地文件（预估）
+## 7. 落地文件（实际）
 
-- `01_content/src/client/split.tsx`：卡片 ⋯ 按钮 + 本地菜单 + `ConsoleCardData.self` 复用 +
-  `ConsoleEnv.console.onCardAction` + `popoverPos` 调用。
-- `01_content/src/client/index.tsx`：`renameOverride` / `migrateTabsInto` 纯函数抽取、
-  `popoverPos`、`onCardAction` 注入、重命名弹层、`viewPick` 锚点参数化。
-- `01_content/src/client/styles.ts`：⋯ 按钮与两项菜单样式（含 circle 覆写、浅色主题变量）。
-- `01_content/src/client/locales.ts`：`console.rename` / `console.changeLayout`（zh + en）。
-- `04_test/layout-change.test.mjs`（新）、`04_test/probe-console-card-actions.cjs`（新，实机）。
-- `AGENTS.md`、本设计稿状态行。
+- `01_content/src/client/consoleEdit.ts`（新）：`renameOverride` / `popoverPos` / `collectTabs` /
+  `migrateTabsInto` + `window.__dshWorktable` 合并导出。
+- `01_content/src/client/split.tsx`：卡片 ⋯ 按钮 + 本地 fixed 菜单（Esc 关闭）+ 类型 `onCardAction`
+  + `popoverPos` 调用 + 调试出口改**合并**写入。
+- `01_content/src/client/index.tsx`：纯函数抽取接线、`onCardAction` 注入、改名弹层（autoFocus + 全选）、
+  `viewPickAnchor` / `setViewPick` / `viewPickPos`。
+- `01_content/src/client/styles.ts`：⋯/菜单/改名弹层样式（circle 与浅色主题覆写）。
+- `01_content/src/client/locales.ts`：`console.actions` / `console.rename` / `console.renameOk` /
+  `console.changeLayout`（zh + en）。
+- `04_test/console-card-actions.test.mjs`（新）、`04_test/probe-console-card-actions.cjs`（新，实机，
+  零依赖：Node 22 内置 `WebSocket` + CDP）。
+- `01_content/release-prep.mjs`（5c4 门禁）、`AGENTS.md`（控制室卡片动作约定 + 配套检查入口）。

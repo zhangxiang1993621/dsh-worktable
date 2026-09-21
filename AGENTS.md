@@ -71,7 +71,9 @@ node --check lib/index.js
   （closeTab 留档 / restoreClosedTab 原样放回 + 未命中无操作 / seedPaneRestore 只填空窗格 / 活通道闭环 /
   htmlProductCandidates 无清单产物候选）；
   `node 04_test/server-home.test.mjs [lib/index.js 路径]` = 数据目录解析 3 组场景（子进程隔离夹具；
-  **突变体验证法**：把 loadPkg 兜底的 baseDshHome() 故意改回 resolveDshHomeSafe() 恢复循环，测试必须红）。
+  **突变体验证法**：把 loadPkg 兜底的 baseDshHome() 故意改回 resolveDshHomeSafe() 恢复循环，测试必须红）；
+  `node 04_test/console-card-actions.test.mjs [lib/client.js 路径]` = 控制室卡片动作 4 场景
+  （renameOverride 覆盖语义 / popoverPos 钳制 / collectTabs 顺序与过滤 / migrateTabsInto 迁入与溢出）。
   `npm run verify:remote -- --expect-sha <release-prep 输出的 SHA> [tag]` = 发布后只读核对
   （远端固定名+版本化双资产文件名/结构/版本/双 SHA 同源且等于本地验收 SHA/安装/导入；
   远端只读，本地仅临时目录）。上传后必须跑 verify:remote 并用 --expect-sha 比对，
@@ -204,6 +206,17 @@ node --check lib/index.js
     快照变化推送）+ 面板每秒 tick。
   - 卡片动作：点卡片 = 打开该项目（openSplit 或入驻项目切绑定对话）；工作台自己的卡片
     点击无操作。💬 跳转按钮已删除（用户定案无意义）。
+  - 卡片动作（重命名 / 切换布局）：非 self 卡片悬停（或键盘 focus-within）时右上角浮现 ⋯ →
+    面板本地菜单两项「重命名 / 切换布局」；菜单与后续弹层一律 `position:fixed`（卡片
+    overflow:hidden 会裁掉内部菜单）。菜单 Esc 可关（keydown 挂 window）、首项 autoFocus。
+    重命名 = 宿主弹层（autoFocus + 全选，Enter 提交 / Esc 取消）→ 既有 `renameProject`
+    （空白提交删除覆盖回退原名；`nameOverrides` 是全局显示名，卡片/侧栏/管理列表同步变）。
+    切换布局 = 复用「变更视图」缩略图弹层（含末尾「＋自定义」）：卡片入口用 `popoverPos`
+    锚点定位，管理列表仍用侧栏锚点 popLeft/popTop；选中即 `applyLayoutChange`（标签按序迁入）。
+    纯逻辑与几何在 `src/client/consoleEdit.ts`（renameOverride / popoverPos / collectTabs /
+    migrateTabsInto），经 `window.__dshWorktable` 导出（**split.tsx 与 consoleEdit.ts 的
+    调试出口都必须合并写入**，整体覆盖会把对方冲掉）；回归
+    `node 04_test/console-card-actions.test.mjs [lib/client.js 路径]`（已挂 release-prep 5c4）。
   - 主题：面板三选一开关（图标按钮 🌙/☀️/🖥️，title/aria 保留文字；存 view.v1 consoleTheme）；
     system 读宿主 html 的 color-scheme（DSH 深色/白色/跟随系统设置都会反映到它）+
     prefers-color-scheme 兜底；落成 .dsh-wt_console[data-wt-theme=dark|light] 作用域变量

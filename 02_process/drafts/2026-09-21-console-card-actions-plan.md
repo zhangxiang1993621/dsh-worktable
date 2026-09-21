@@ -10,6 +10,24 @@
 
 **设计稿：** `02_process/drafts/2026-09-21-console-card-actions-design.md`（已批准，commit a69af4f）。
 
+## 计划勘误（2026-09-21 执行期 + 评审结论，已实施）
+
+1. **行号漂移**：Task 2/3 里引用的行号是动手前的快照。**一律以引号内的原文串（唯一）定位**，
+   不要按行号改；执行期核实的对应关系：`popLeft` 2974 / `popTop` 2977 / 管理列表 🧩 3293 /
+   viewPick backdrop+popover 3336-3337 / ＋自定义磁贴 3356 / viewPick 块结束 3347 /
+   bindPick backdrop 3349 / 卡片 JSX 2205-2233。
+2. **类型名**：`split.tsx` 里没有 `ConsoleEnv`，实际是 `SplitEnv`（`console?:` 段从 264 行起）。
+3. **调试出口必须合并写入（执行期真红暴露）**：`split.tsx` 一旦 import `./consoleEdit`，
+   esbuild 会把 consoleEdit 的模块体排在 split 之前执行，于是 split 末尾原来的
+   `window.__dshWorktable = { splitStore, seedPaneRestore }` 会**整体覆盖**掉纯函数导出
+   （现象：Task 2 后重新构建，`FAIL(export.renameOverride)`）。两处写入都必须展开既有对象。
+   Task 1 Interfaces 里「装载顺序无关」的前提是**两边都合并写入**，不是天然成立。
+4. **新增测试文件名**：以 `04_test/console-card-actions.test.mjs` 为准（设计稿已同步改为该名）。
+5. **Task 4 探针**：预置空的 `projects.v1` 时 `wt-console` 未绑定 → 点入口卡只弹强制绑定弹层，
+   面板不开就没有 `.dsh-wt_consoleCard`。已实施版先走绑定（`.dsh-wt_consoleBindPop` 里
+   「加入现有对话」首项，不新建会话），并预置一个 `layouts` 项目保证有非 self 卡片可控；
+   探针零依赖（Node 22 内置 `WebSocket`，本仓库无 `ws`），另断言 `data-on` 预设高亮与 Esc 关闭。
+
 ## Global Constraints
 
 - 插件包根 = `01_content/`；**构建必须 `cd 01_content` 后执行**（误在仓库根跑会把 lib 写到仓库根，宿主仍加载旧 bundle）。
@@ -287,7 +305,7 @@ git commit -m "refactor(console): 控制室卡片动作纯逻辑抽到 consoleEd
 ### Task 2: 卡片「⋯」入口 + 重命名弹层
 
 **Files:**
-- Modify: `01_content/src/client/split.tsx`（顶部 import；`ConsoleEnv.console` 类型 262-295 区；`ConsolePane` state 1777 区；mask 行 2164；卡片 JSX 2191-2233）
+- Modify: `01_content/src/client/split.tsx`（顶部 import；`SplitEnv.console` 类型 262-295 区；`ConsolePane` state 1777 区；mask 行 2164；卡片 JSX 2191-2233）
 - Modify: `01_content/src/client/index.tsx`（state 1399 区；`env.console` 1648-1653 区；弹层 JSX 3371 区）
 - Modify: `01_content/src/client/locales.ts`（zh 180 区；en 422 区）
 - Modify: `01_content/src/client/styles.ts`（594 行后）
