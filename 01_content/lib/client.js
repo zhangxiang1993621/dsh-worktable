@@ -21710,6 +21710,11 @@ function WorktableSection(props) {
   const copyToastTimerRef = (0, import_react2.useRef)(null);
   const [requestDelete, setRequestDelete] = (0, import_react2.useState)(null);
   const [viewPickFor, setViewPickFor] = (0, import_react2.useState)(null);
+  const [viewPickAnchor, setViewPickAnchor] = (0, import_react2.useState)(null);
+  const setViewPick = (id, anchor) => {
+    setViewPickFor(id);
+    setViewPickAnchor(anchor ?? null);
+  };
   const [cardRename, setCardRename] = (0, import_react2.useState)(null);
   const [float, setFloat] = (0, import_react2.useState)(
     () => view.dock === "float" && view.floatTop != null ? { top: view.floatTop } : null
@@ -21986,7 +21991,7 @@ function WorktableSection(props) {
             setCardRename({ id, x: pos.x, y: pos.y, draft: display });
             return;
           }
-          setViewPickFor(id);
+          setViewPick(id, popoverPos(anchor, { w: 320, h: 540 }, vp));
         },
         onOpen: (id) => {
           if (id === CONSOLE_ID) return;
@@ -23018,7 +23023,7 @@ function WorktableSection(props) {
       splitStore.close();
       openSplit(next);
     }
-    setViewPickFor(null);
+    setViewPick(null);
   };
   const presetOf = (l) => {
     const leftCount = l.left ? 1 : 0;
@@ -23243,6 +23248,7 @@ function WorktableSection(props) {
   const sectionTop = rootRef.current?.getBoundingClientRect().top ?? 100;
   const popLeft = sidebarRight != null ? Math.min(sidebarRight + 8, Math.max(16, window.innerWidth - 344)) : 16;
   const popTop = clamp2(sectionTop, MIN_TOP, Math.max(MIN_TOP, window.innerHeight - 540));
+  const viewPickPos = viewPickAnchor ? popoverPos(viewPickAnchor, { w: 320, h: 540 }, { w: window.innerWidth, h: window.innerHeight }) : { x: popLeft, y: popTop };
   const POP_BOTTOM_MARGIN = 12;
   const settingsRef = (0, import_react2.useRef)(null);
   const [settingsTop, setSettingsTop] = (0, import_react2.useState)(null);
@@ -23666,7 +23672,7 @@ function WorktableSection(props) {
               ),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(RenameInput, { initial: display, placeholder: t("manage.renamePh"), onCommit: (v) => renameProject(id, v) }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_manageBtn", title: isHidden ? t("manage.show") : t("manage.hide"), onClick: () => toggleHidden(id), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(EyeIcon, { closed: isHidden }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_manageBtn", title: t("manage.changeView"), onClick: () => setViewPickFor(id), children: "\u{1F9E9}" }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_manageBtn", title: t("manage.changeView"), onClick: () => setViewPick(id), children: "\u{1F9E9}" }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                 "button",
                 {
@@ -23717,8 +23723,8 @@ function WorktableSection(props) {
         ] })
       ] })
     ] }),
-    viewPickFor && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_popBackdrop", style: { zIndex: 81 }, onClick: () => setViewPickFor(null) }),
-    viewPickFor && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_menu dsh-wt_pop", style: { position: "fixed", left: popLeft, top: popTop, width: 320, zIndex: 82 }, children: [
+    viewPickFor && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_popBackdrop", style: { zIndex: 81 }, onClick: () => setViewPick(null) }),
+    viewPickFor && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_menu dsh-wt_pop", style: { position: "fixed", left: viewPickPos.x, top: viewPickPos.y, width: 320, zIndex: 82 }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dsh-wt_menuLabel", children: t("viewPick.title") }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_presets", children: [
         PRESET_DEFS.map((def) => {
@@ -23742,7 +23748,7 @@ function WorktableSection(props) {
             className: "dsh-wt_preset dsh-wt_presetAdd",
             title: t("customLayout.addTitle"),
             onClick: () => {
-              setViewPickFor(null);
+              setViewPick(null);
               setCustomOpen(true);
             },
             children: [

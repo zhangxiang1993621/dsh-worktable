@@ -1396,8 +1396,13 @@ function WorktableSection(props: any) {
   const copyToastTimerRef = useRef<number | null>(null)
   /** 删除二次确认：kind + 目标 id + 显示名 */
   const [requestDelete, setRequestDelete] = useState<{ kind: 'layout' | 'shortcut' | 'project'; id: string; name: string } | null>(null)
-  /** 变更视图：正在挑选新拓扑的布局 id */
+  /** 变更视图：正在挑选新拓扑的布局 id + 可选锚点（控制室卡片入口传锚点；管理列表不传 = 侧栏锚点） */
   const [viewPickFor, setViewPickFor] = useState<string | null>(null)
+  const [viewPickAnchor, setViewPickAnchor] = useState<{ right: number; top: number } | null>(null)
+  const setViewPick = (id: string | null, anchor?: { right: number; top: number }) => {
+    setViewPickFor(id)
+    setViewPickAnchor(anchor ?? null)
+  }
   /** 控制室卡片改名弹层：项目 id + 锚点坐标 + 草稿（onCardAction('rename') 打开） */
   const [cardRename, setCardRename] = useState<{ id: string; x: number; y: number; draft: string } | null>(null)
   const [float, setFloat] = useState<FloatRect | null>(() =>
@@ -1665,7 +1670,7 @@ function WorktableSection(props: any) {
             setCardRename({ id, x: pos.x, y: pos.y, draft: display })
             return
           }
-          setViewPickFor(id) // Task 3 接管锚点定位
+          setViewPick(id, popoverPos(anchor, { w: 320, h: 540 }, vp))
         },
         onOpen: (id) => {
           if (id === CONSOLE_ID) return
@@ -2717,7 +2722,7 @@ function buildCustomLayoutPrompt(req: string): string {
       splitStore.close()
       openSplit(next)
     }
-    setViewPickFor(null)
+    setViewPick(null)
   }
 
   /** 布局当前拓扑对应的预设 id（用于视图选择器高亮） */
@@ -2975,6 +2980,10 @@ function buildCustomLayoutPrompt(req: string): string {
     ? Math.min(sidebarRight + 8, Math.max(16, window.innerWidth - 344))
     : 16
   const popTop = clamp(sectionTop, MIN_TOP, Math.max(MIN_TOP, window.innerHeight - 540))
+  // 变更视图弹层定位：控制室卡片入口用卡片锚点，管理列表沿用侧栏锚点（行为不变）
+  const viewPickPos = viewPickAnchor
+    ? popoverPos(viewPickAnchor, { w: 320, h: 540 }, { w: window.innerWidth, h: window.innerHeight })
+    : { x: popLeft, y: popTop }
 
   // 设置弹窗底部防溢出：弹窗底与视口底保持 POP_BOTTOM_MARGIN；触底后以底为基准向上生长
   const POP_BOTTOM_MARGIN = 12
@@ -3290,7 +3299,7 @@ function buildCustomLayoutPrompt(req: string): string {
                 <button type="button" className="dsh-wt_manageBtn" title={isHidden ? t('manage.show') : t('manage.hide')} onClick={() => toggleHidden(id)}>
                   <EyeIcon closed={isHidden} />
                 </button>
-                <button type="button" className="dsh-wt_manageBtn" title={t('manage.changeView')} onClick={() => setViewPickFor(id)}>🧩</button>
+                <button type="button" className="dsh-wt_manageBtn" title={t('manage.changeView')} onClick={() => setViewPick(id)}>🧩</button>
                 <button
                   type="button"
                   className="dsh-wt_manageBtn"
@@ -3333,9 +3342,9 @@ function buildCustomLayoutPrompt(req: string): string {
         </div>
       )}
 
-      {viewPickFor && <div className="dsh-wt_popBackdrop" style={{ zIndex: 81 }} onClick={() => setViewPickFor(null)} />}
+      {viewPickFor && <div className="dsh-wt_popBackdrop" style={{ zIndex: 81 }} onClick={() => setViewPick(null)} />}
       {viewPickFor && (
-        <div className="dsh-wt_menu dsh-wt_pop" style={{ position: 'fixed', left: popLeft, top: popTop, width: 320, zIndex: 82 }}>
+        <div className="dsh-wt_menu dsh-wt_pop" style={{ position: 'fixed', left: viewPickPos.x, top: viewPickPos.y, width: 320, zIndex: 82 }}>
           <span className="dsh-wt_menuLabel">{t('viewPick.title')}</span>
           <div className="dsh-wt_presets">
             {PRESET_DEFS.map((def) => {
@@ -3353,7 +3362,7 @@ function buildCustomLayoutPrompt(req: string): string {
               )
             })}
             <button type="button" className="dsh-wt_preset dsh-wt_presetAdd" title={t('customLayout.addTitle')}
-              onClick={() => { setViewPickFor(null); setCustomOpen(true) }}>
+              onClick={() => { setViewPick(null); setCustomOpen(true) }}>
               <span className="dsh-wt_presetAddIcon" aria-hidden>＋</span>
               <span className="dsh-wt_presetAddText">{t('customLayout.add')}</span>
             </button>
