@@ -8346,6 +8346,24 @@ var css = xterm_default + "\n" + [
   ".dsh-wt_consoleCard-glowDone::after,.dsh-wt_consoleCard-glowNeed::after{opacity:0}",
   ".dsh-wt_consoleCard:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.09)}",
   ".dsh-wt_consoleCardSelf{cursor:default;opacity:.97}",
+  // 控制室卡片动作：⋯ 按钮（悬停/聚焦浮现）+ 本地菜单 + 改名弹层
+  ".dsh-wt_consoleCardMore{position:absolute;top:10px;right:10px;z-index:2;width:24px;height:24px;display:flex;align-items:center;justify-content:center;padding:0;border:none;border-radius:6px;background:rgba(255,255,255,.14);color:var(--wt-text);font:inherit;font-size:16px;line-height:1;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s ease}",
+  ".dsh-wt_consoleCard:hover .dsh-wt_consoleCardMore,.dsh-wt_consoleCard:focus-within .dsh-wt_consoleCardMore{opacity:1;pointer-events:auto}",
+  ".dsh-wt_consoleCardMore:hover{background:rgba(255,255,255,.26)}",
+  ".dsh-wt_console[data-wt-theme=light] .dsh-wt_consoleCardMore{background:rgba(27,31,36,.10)}",
+  ".dsh-wt_console[data-wt-theme=light] .dsh-wt_consoleCardMore:hover{background:rgba(27,31,36,.20)}",
+  ".dsh-wt_console[data-wt-shape=circle] .dsh-wt_consoleCardMore{top:26px;right:26px}",
+  ".dsh-wt_consoleCardMenu{background:var(--wt-menuBg,#0b0e14);border-color:var(--wt-menuBorder,#3a4150)}",
+  ".dsh-wt_console[data-wt-theme=light] .dsh-wt_consoleCardMenu{--wt-menuBg:#ffffff;--wt-menuBorder:rgba(27,31,36,.16)}",
+  ".dsh-wt_cardMenuItem{display:block;width:100%;padding:7px 10px;border:none;border-radius:6px;background:transparent;color:var(--wt-text);font:inherit;font-size:12.5px;line-height:18px;text-align:left;cursor:pointer}",
+  ".dsh-wt_cardMenuItem:hover{background:rgba(255,255,255,.08)}",
+  ".dsh-wt_console[data-wt-theme=light] .dsh-wt_cardMenuItem:hover{background:rgba(27,31,36,.06)}",
+  ".dsh-wt_renameField{display:flex;align-items:center;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2,#3a4150);border-radius:6px}",
+  ".dsh-wt_renameRow{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}",
+  ".dsh-wt_renameBtn{padding:5px 12px;border:1px solid var(--dsw-alias-border-l2,#3a4150);border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary,#e6e8eb);font:inherit;font-size:12px;cursor:pointer}",
+  ".dsh-wt_renameBtn:hover{background:var(--dsw-alias-bg-l2,rgba(255,255,255,.08))}",
+  ".dsh-wt_renameBtnGo{background:#3b82f6;border-color:#3b82f6;color:#fff}",
+  ".dsh-wt_renameBtnGo:hover{background:#2f74e0}",
   ".dsh-wt_consoleCardHead{display:flex;align-items:center;gap:13px;min-width:0}",
   ".dsh-wt_consoleIcon{flex:none;font-size:31px;line-height:1}",
   ".dsh-wt_consoleName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:20px;font-weight:700;line-height:28px;color:var(--wt-text)}",
@@ -8597,6 +8615,10 @@ var zh = {
   "console.bindFail": "\u521B\u5EFA\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
   "console.noSessions": "\u6CA1\u6709\u53EF\u7528\u5BF9\u8BDD",
   "console.addProject": "\u6DFB\u52A0\u9879\u76EE",
+  "console.actions": "\u9879\u76EE\u64CD\u4F5C",
+  "console.rename": "\u91CD\u547D\u540D",
+  "console.renameOk": "\u786E\u5B9A",
+  "console.changeLayout": "\u5207\u6362\u5E03\u5C40",
   "pane.wip": "\u5F00\u53D1\u4E2D\uFF08\u540E\u7EED\u7248\u672C\u63A5\u5165\uFF09",
   "pane.explorerNoCwd": "\u5F53\u524D\u4F1A\u8BDD\u6CA1\u6709\u5DE5\u4F5C\u76EE\u5F55",
   "pane.openLater": "\u8BE5\u7C7B\u578B\u6682\u4E0D\u652F\u6301\u9884\u89C8",
@@ -8834,6 +8856,10 @@ var en = {
   "console.bindFail": "Creation failed, try again",
   "console.noSessions": "No sessions available",
   "console.addProject": "Add project",
+  "console.actions": "Project actions",
+  "console.rename": "Rename",
+  "console.renameOk": "OK",
+  "console.changeLayout": "Change layout",
   "pane.wip": "Coming in a later version",
   "pane.explorerNoCwd": "No working directory for the current session",
   "pane.openLater": "Preview not supported for this type",
@@ -9084,6 +9110,48 @@ async function checkUpdate(force = false) {
 
 // src/client/split.tsx
 var import_xterm2 = __toESM(require_xterm(), 1);
+
+// src/client/consoleEdit.ts
+function renameOverride(map2, id, name) {
+  const next = { ...map2 };
+  if (name.trim()) next[id] = name;
+  else delete next[id];
+  return next;
+}
+function popoverPos(rect, size, viewport) {
+  const x = Math.min(rect.right + 8, Math.max(16, viewport.w - size.w));
+  const y = Math.max(56, Math.min(rect.top - 4, viewport.h - size.h));
+  return { x: Math.round(x), y: Math.round(y) };
+}
+function collectTabs(spec) {
+  if (!spec) return [];
+  const panes = [...spec.left ? [spec.left] : [], ...spec.top ?? [], ...spec.main];
+  return panes.map((p) => p.tabs ?? []).filter((tabs) => tabs.length > 0);
+}
+function migrateTabsInto(next, sources) {
+  const targets = [...next.left ? [next.left] : [], ...next.top ?? [], ...next.main];
+  let si = 0;
+  for (const pane of targets) {
+    if (si < sources.length) {
+      pane.tabs = sources[si];
+      pane.active = 0;
+      pane.content = null;
+      si++;
+    }
+  }
+  const overflow = sources.slice(si).flat();
+  if (overflow.length > 0 && targets.length > 0) {
+    const last = targets[targets.length - 1];
+    last.tabs = [...last.tabs ?? [], ...overflow];
+    last.active = 0;
+  }
+  return next;
+}
+try {
+  const w = window;
+  w.__dshWorktable = { ...w.__dshWorktable ?? {}, renameOverride, popoverPos, collectTabs, migrateTabsInto };
+} catch {
+}
 
 // node_modules/mdurl/index.mjs
 var mdurl_exports = {};
@@ -18351,6 +18419,7 @@ function ConsolePane() {
   const updBusyRef = (0, import_react.useRef)(false);
   const photoUrlRef = (0, import_react.useRef)("");
   const [openMenu, setOpenMenu] = (0, import_react.useState)(null);
+  const [cardMenu, setCardMenu] = (0, import_react.useState)(null);
   const [bgEdit, setBgEdit] = (0, import_react.useState)(null);
   const [plainHsl, setPlainHslState] = (0, import_react.useState)(() => {
     const saved = splitEnv?.console?.getPlainHsl?.();
@@ -18820,6 +18889,19 @@ function ConsolePane() {
       ] })
     ] }),
     openMenu !== null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_dropMask", onClick: () => setOpenMenu(null) }),
+    cardMenu && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_dropMask", onClick: () => setCardMenu(null) }),
+    cardMenu && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_menu dsh-wt_consoleCardMenu", style: { position: "fixed", left: cardMenu.x, top: cardMenu.y, width: 168, zIndex: 82 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "dsh-wt_cardMenuItem", onClick: () => {
+        const it = cardMenu;
+        setCardMenu(null);
+        env?.onCardAction(it.id, "rename", { right: it.right, top: it.top });
+      }, children: T("console.rename") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "dsh-wt_cardMenuItem", onClick: () => {
+        const it = cardMenu;
+        setCardMenu(null);
+        env?.onCardAction(it.id, "layout", { right: it.right, top: it.top });
+      }, children: T("console.changeLayout") })
+    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_consoleScroll", children: annOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_announceCtr", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_announce", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_announceHead", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "dsh-wt_announceVer", children: [
@@ -18875,7 +18957,23 @@ function ConsolePane() {
               c.runtimeMs != null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_consoleRuntime", children: fmtDur(c.runtimeMs) })
             ] }),
             c.status === "busy" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_consoleSweep", "aria-hidden": true }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_consolePreview" + (c.preview ? "" : " dsh-wt_consolePreviewNone"), title: c.preview, children: c.preview || (c.bound ? T("console.noPreview") : T("console.unboundShort")) })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_consolePreview" + (c.preview ? "" : " dsh-wt_consolePreviewNone"), title: c.preview, children: c.preview || (c.bound ? T("console.noPreview") : T("console.unboundShort")) }),
+            !c.self && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                type: "button",
+                className: "dsh-wt_consoleCardMore",
+                title: T("console.actions"),
+                "aria-label": T("console.actions"),
+                onClick: (e) => {
+                  e.stopPropagation();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const pos = popoverPos(r, { w: 168, h: 84 }, { w: window.innerWidth, h: window.innerHeight });
+                  setCardMenu((prev) => prev && prev.id === c.id ? null : { id: c.id, x: pos.x, y: pos.y, right: r.right, top: r.top });
+                },
+                children: "\u22EF"
+              }
+            )
           ]
         },
         c.id
@@ -20224,49 +20322,8 @@ function SplitWorkspace() {
   }) });
 }
 try {
-  window.__dshWorktable = { splitStore, seedPaneRestore };
-} catch {
-}
-
-// src/client/consoleEdit.ts
-function renameOverride(map2, id, name) {
-  const next = { ...map2 };
-  if (name.trim()) next[id] = name;
-  else delete next[id];
-  return next;
-}
-function popoverPos(rect, size, viewport) {
-  const x = Math.min(rect.right + 8, Math.max(16, viewport.w - size.w));
-  const y = Math.max(56, Math.min(rect.top - 4, viewport.h - size.h));
-  return { x: Math.round(x), y: Math.round(y) };
-}
-function collectTabs(spec) {
-  if (!spec) return [];
-  const panes = [...spec.left ? [spec.left] : [], ...spec.top ?? [], ...spec.main];
-  return panes.map((p) => p.tabs ?? []).filter((tabs) => tabs.length > 0);
-}
-function migrateTabsInto(next, sources) {
-  const targets = [...next.left ? [next.left] : [], ...next.top ?? [], ...next.main];
-  let si = 0;
-  for (const pane of targets) {
-    if (si < sources.length) {
-      pane.tabs = sources[si];
-      pane.active = 0;
-      pane.content = null;
-      si++;
-    }
-  }
-  const overflow = sources.slice(si).flat();
-  if (overflow.length > 0 && targets.length > 0) {
-    const last = targets[targets.length - 1];
-    last.tabs = [...last.tabs ?? [], ...overflow];
-    last.active = 0;
-  }
-  return next;
-}
-try {
   const w = window;
-  w.__dshWorktable = { ...w.__dshWorktable ?? {}, renameOverride, popoverPos, collectTabs, migrateTabsInto };
+  w.__dshWorktable = { ...w.__dshWorktable ?? {}, splitStore, seedPaneRestore };
 } catch {
 }
 
@@ -21653,6 +21710,7 @@ function WorktableSection(props) {
   const copyToastTimerRef = (0, import_react2.useRef)(null);
   const [requestDelete, setRequestDelete] = (0, import_react2.useState)(null);
   const [viewPickFor, setViewPickFor] = (0, import_react2.useState)(null);
+  const [cardRename, setCardRename] = (0, import_react2.useState)(null);
   const [float, setFloat] = (0, import_react2.useState)(
     () => view.dock === "float" && view.floatTop != null ? { top: view.floatTop } : null
   );
@@ -21917,6 +21975,19 @@ function WorktableSection(props) {
           sweepPreviews();
         },
         onAdd: () => openAddPanel(),
+        onCardAction: (id, action, anchor) => {
+          if (id === CONSOLE_ID) return;
+          const pr = projectsRef.current;
+          const layout = pr.projects.layouts.find((l) => l.id === id);
+          const display = pr.projects.nameOverrides[id] ?? pr.metas[id]?.name ?? layout?.title ?? id;
+          const vp = { w: window.innerWidth, h: window.innerHeight };
+          if (action === "rename") {
+            const pos = popoverPos(anchor, { w: 240, h: 132 }, vp);
+            setCardRename({ id, x: pos.x, y: pos.y, draft: display });
+            return;
+          }
+          setViewPickFor(id);
+        },
         onOpen: (id) => {
           if (id === CONSOLE_ID) return;
           const pr = projectsRef.current.projects;
@@ -23680,6 +23751,33 @@ function WorktableSection(props) {
             ]
           }
         )
+      ] })
+    ] }),
+    cardRename && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_popBackdrop", style: { zIndex: 87 }, onClick: () => setCardRename(null) }),
+    cardRename && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_menu dsh-wt_pop", style: { position: "fixed", left: cardRename.x, top: cardRename.y, width: 240, zIndex: 88 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dsh-wt_menuLabel", children: t("console.rename") }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_renameField", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "input",
+        {
+          className: "dsh-wt_manageInput",
+          autoFocus: true,
+          value: cardRename.draft,
+          placeholder: t("manage.renamePh"),
+          onChange: (e) => setCardRename({ ...cardRename, draft: e.target.value }),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") {
+              renameProject(cardRename.id, cardRename.draft);
+              setCardRename(null);
+            } else if (e.key === "Escape") setCardRename(null);
+          }
+        }
+      ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_renameRow", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_renameBtn", onClick: () => setCardRename(null), children: t("confirm.cancel") }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_renameBtn dsh-wt_renameBtnGo", onClick: () => {
+          renameProject(cardRename.id, cardRename.draft);
+          setCardRename(null);
+        }, children: t("console.renameOk") })
       ] })
     ] }),
     bindPick && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_popBackdrop", style: { zIndex: 83 }, onClick: () => {

@@ -3,6 +3,7 @@ import { parentPathOf } from './pathutil'
 import { CHANGELOG_V030 } from './changelog'
 import { LOCAL_VERSION, checkUpdate, getAutoCheck, readCache, setAutoCheck as storeAutoCheck, setSkipVersion, type UpdateInfo, type UpdateStatus } from './updateCheck'
 import { Terminal } from 'xterm'
+import { popoverPos } from './consoleEdit'
 
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js/lib/core'
@@ -271,6 +272,8 @@ type SplitEnv = {
     refreshPreviews: () => void
     /** 创建卡片：打开「添加项目」流程（同侧栏 ＋） */
     onAdd: () => void
+    /** 控制室卡片动作：重命名 / 切换布局（anchor = 触发按钮的视口坐标 right/top） */
+    onCardAction: (id: string, action: 'rename' | 'layout', anchor: { right: number; top: number }) => void
     getTheme: () => 'dark' | 'light' | 'system'
     setTheme: (th: 'dark' | 'light' | 'system') => void
     getCols: () => number
@@ -1775,6 +1778,8 @@ function ConsolePane() {
   const updBusyRef = useRef(false)
   const photoUrlRef = useRef<string>('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  /** 卡片 ⋯ 菜单：项目 id + 菜单坐标 + 触发按钮锚点（供后续弹层定位） */
+  const [cardMenu, setCardMenu] = useState<{ id: string; x: number; y: number; right: number; top: number } | null>(null)
   const [bgEdit, setBgEdit] = useState<'plain' | 'glow' | 'photo' | null>(null)
   const [plainHsl, setPlainHslState] = useState<{ h: number; s: number; l: number }>(() => {
     const saved = splitEnv?.console?.getPlainHsl?.()
@@ -2162,6 +2167,21 @@ function ConsolePane() {
           : bgPhoto ? <img className="dsh-wt_consoleMedia" src={bgPhoto} alt="" style={photoHsl.h !== 0 || photoHsl.s !== 100 || photoHsl.l !== 100 ? { filter: 'hue-rotate(' + photoHsl.h + 'deg) saturate(' + photoHsl.s + '%) brightness(' + photoHsl.l + '%)' } : undefined} /> : null)}
         {bg === 'glow' && (<><i className="dsh-wt_blob dsh-wt_blob1" /><i className="dsh-wt_blob dsh-wt_blob2" /><i className="dsh-wt_blob dsh-wt_blob3" /><i className="dsh-wt_blob dsh-wt_blob4" /></>)}</span>
       {openMenu !== null && <div className="dsh-wt_dropMask" onClick={() => setOpenMenu(null)} />}
+      {cardMenu && <div className="dsh-wt_dropMask" onClick={() => setCardMenu(null)} />}
+      {cardMenu && (
+        <div className="dsh-wt_menu dsh-wt_consoleCardMenu" style={{ position: 'fixed', left: cardMenu.x, top: cardMenu.y, width: 168, zIndex: 82 }}>
+          <button type="button" className="dsh-wt_cardMenuItem" onClick={() => {
+            const it = cardMenu
+            setCardMenu(null)
+            env?.onCardAction(it.id, 'rename', { right: it.right, top: it.top })
+          }}>{T('console.rename')}</button>
+          <button type="button" className="dsh-wt_cardMenuItem" onClick={() => {
+            const it = cardMenu
+            setCardMenu(null)
+            env?.onCardAction(it.id, 'layout', { right: it.right, top: it.top })
+          }}>{T('console.changeLayout')}</button>
+        </div>
+      )}
       <div className="dsh-wt_consoleScroll">
         {annOpen ? (
           <div className="dsh-wt_announceCtr">
@@ -2218,6 +2238,20 @@ function ConsolePane() {
             <div className={'dsh-wt_consolePreview' + (c.preview ? '' : ' dsh-wt_consolePreviewNone')} title={c.preview}>
               {c.preview || (c.bound ? T('console.noPreview') : T('console.unboundShort'))}
             </div>
+            {!c.self && (
+              <button
+                type="button"
+                className="dsh-wt_consoleCardMore"
+                title={T('console.actions')}
+                aria-label={T('console.actions')}
+                onClick={(e) => {
+                  e.stopPropagation() // 绝不触发卡片「打开项目」
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                  const pos = popoverPos(r, { w: 168, h: 84 }, { w: window.innerWidth, h: window.innerHeight })
+                  setCardMenu((prev) => (prev && prev.id === c.id ? null : { id: c.id, x: pos.x, y: pos.y, right: r.right, top: r.top }))
+                }}
+              >⋯</button>
+            )}
           </div>
         ))}
         {/* 创建卡片：永远最后一位；点击 = 侧栏工作台「添加项目」同款流程 */}
@@ -3465,7 +3499,8 @@ function SplitWorkspace() {
   )
 }
 
-/** 调试出口（自动化验证用；必须在 store 定义之后） */
-try { (window as any).__dshWorktable = { splitStore, seedPaneRestore } } catch {}
+/** 调试出口（自动化验证用；必须在 store 定义之后）。合并写入：consoleEdit 的纯函数先于本模块体
+ *  装载（本文件 import 它），整体覆盖会把它们冲掉，故必须展开既有对象。 */
+try { const w = window as any; w.__dshWorktable = { ...(w.__dshWorktable ?? {}), splitStore, seedPaneRestore } } catch {}
 
 export { SplitWorkspace }

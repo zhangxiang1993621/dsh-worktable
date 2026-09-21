@@ -1398,6 +1398,8 @@ function WorktableSection(props: any) {
   const [requestDelete, setRequestDelete] = useState<{ kind: 'layout' | 'shortcut' | 'project'; id: string; name: string } | null>(null)
   /** 变更视图：正在挑选新拓扑的布局 id */
   const [viewPickFor, setViewPickFor] = useState<string | null>(null)
+  /** 控制室卡片改名弹层：项目 id + 锚点坐标 + 草稿（onCardAction('rename') 打开） */
+  const [cardRename, setCardRename] = useState<{ id: string; x: number; y: number; draft: string } | null>(null)
   const [float, setFloat] = useState<FloatRect | null>(() =>
     view.dock === 'float' && view.floatTop != null ? { top: view.floatTop } : null,
   )
@@ -1652,6 +1654,19 @@ function WorktableSection(props: any) {
           sweepPreviews()
         },
         onAdd: () => openAddPanel(),
+        onCardAction: (id, action, anchor) => {
+          if (id === CONSOLE_ID) return // 控制室自身无卡片动作（界面不提供，这里兜底）
+          const pr = projectsRef.current
+          const layout = pr.projects.layouts.find((l) => l.id === id)
+          const display = pr.projects.nameOverrides[id] ?? pr.metas[id]?.name ?? layout?.title ?? id
+          const vp = { w: window.innerWidth, h: window.innerHeight }
+          if (action === 'rename') {
+            const pos = popoverPos(anchor, { w: 240, h: 132 }, vp)
+            setCardRename({ id, x: pos.x, y: pos.y, draft: display })
+            return
+          }
+          setViewPickFor(id) // Task 3 接管锚点定位
+        },
         onOpen: (id) => {
           if (id === CONSOLE_ID) return
           const pr = projectsRef.current.projects
@@ -3342,6 +3357,30 @@ function buildCustomLayoutPrompt(req: string): string {
               <span className="dsh-wt_presetAddIcon" aria-hidden>＋</span>
               <span className="dsh-wt_presetAddText">{t('customLayout.add')}</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {cardRename && <div className="dsh-wt_popBackdrop" style={{ zIndex: 87 }} onClick={() => setCardRename(null)} />}
+      {cardRename && (
+        <div className="dsh-wt_menu dsh-wt_pop" style={{ position: 'fixed', left: cardRename.x, top: cardRename.y, width: 240, zIndex: 88 }}>
+          <span className="dsh-wt_menuLabel">{t('console.rename')}</span>
+          <div className="dsh-wt_renameField">
+            <input
+              className="dsh-wt_manageInput"
+              autoFocus
+              value={cardRename.draft}
+              placeholder={t('manage.renamePh')}
+              onChange={(e) => setCardRename({ ...cardRename, draft: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { renameProject(cardRename.id, cardRename.draft); setCardRename(null) }
+                else if (e.key === 'Escape') setCardRename(null)
+              }}
+            />
+          </div>
+          <div className="dsh-wt_renameRow">
+            <button type="button" className="dsh-wt_renameBtn" onClick={() => setCardRename(null)}>{t('confirm.cancel')}</button>
+            <button type="button" className="dsh-wt_renameBtn dsh-wt_renameBtnGo" onClick={() => { renameProject(cardRename.id, cardRename.draft); setCardRename(null) }}>{t('console.renameOk')}</button>
           </div>
         </div>
       )}
