@@ -3,6 +3,7 @@ import { css } from './styles'
 import { NS, zh, en, type WorktableKey } from './locales'
 import { isAbs, joinPath, parentPathOf, basenameOf } from './pathutil'
 import { splitStore, SplitWorkspace, setSplitT, setSplitEnv, seedPaneRestore, type LayoutSpec, type SplitPane, type ConsoleCardData, type WidgetEntry } from './split'
+import { renameOverride, popoverPos, collectTabs, migrateTabsInto } from './consoleEdit'
 import { photoStore, kindOf } from './photoStore'
 import { DEFAULT_BG_SVG, b64ToBlob } from './defaultBg'
 import { WAVE_BG_B64 } from './waveBg'
@@ -2647,12 +2648,7 @@ function buildCustomLayoutPrompt(req: string): string {
   }
 
   const renameProject = (id: string, name: string) => {
-    persistProjects((prev) => {
-      const next = { ...prev.nameOverrides }
-      if (name.trim()) next[id] = name
-      else delete next[id]
-      return { ...prev, nameOverrides: next }
-    })
+    persistProjects((prev) => ({ ...prev, nameOverrides: renameOverride(prev.nameOverrides, id, name) }))
   }
 
 
@@ -2693,30 +2689,10 @@ function buildCustomLayoutPrompt(req: string): string {
     const layout = projects.layouts.find((l) => l.id === id)
     const meta = metas[id]
     const current = layout ?? projects.views[id]
-    const sources = current
-      ? [...(current.top ?? []), ...current.main]
-          .map((pp) => pp.tabs ?? [])
-          .filter((tabs) => tabs.length > 0)
-      : []
     const next = buildLayout(presetId, layout ? layout.title : (meta?.name ?? id))
     next.id = id
     next.icon = layout ? layout.icon : (projects.iconOverrides[id] ?? meta?.icon)
-    const targets = [...(next.left ? [next.left] : []), ...(next.top ?? []), ...next.main]
-    let si = 0
-    for (const pane of targets) {
-      if (si < sources.length) {
-        pane.tabs = sources[si]
-        pane.active = 0
-        pane.content = null
-        si++
-      }
-    }
-    const overflow = sources.slice(si).flat()
-    if (overflow.length > 0 && targets.length > 0) {
-      const last = targets[targets.length - 1]
-      last.tabs = [...(last.tabs ?? []), ...overflow]
-      last.active = 0
-    }
+    migrateTabsInto(next, collectTabs(current))
     persistProjects((prev) => layout
       ? { ...prev, layouts: prev.layouts.map((l) => (l.id === id ? next : l)) }
       : { ...prev, views: { ...prev.views, [id]: next } })

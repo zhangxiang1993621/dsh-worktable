@@ -20228,6 +20228,48 @@ try {
 } catch {
 }
 
+// src/client/consoleEdit.ts
+function renameOverride(map2, id, name) {
+  const next = { ...map2 };
+  if (name.trim()) next[id] = name;
+  else delete next[id];
+  return next;
+}
+function popoverPos(rect, size, viewport) {
+  const x = Math.min(rect.right + 8, Math.max(16, viewport.w - size.w));
+  const y = Math.max(56, Math.min(rect.top - 4, viewport.h - size.h));
+  return { x: Math.round(x), y: Math.round(y) };
+}
+function collectTabs(spec) {
+  if (!spec) return [];
+  const panes = [...spec.left ? [spec.left] : [], ...spec.top ?? [], ...spec.main];
+  return panes.map((p) => p.tabs ?? []).filter((tabs) => tabs.length > 0);
+}
+function migrateTabsInto(next, sources) {
+  const targets = [...next.left ? [next.left] : [], ...next.top ?? [], ...next.main];
+  let si = 0;
+  for (const pane of targets) {
+    if (si < sources.length) {
+      pane.tabs = sources[si];
+      pane.active = 0;
+      pane.content = null;
+      si++;
+    }
+  }
+  const overflow = sources.slice(si).flat();
+  if (overflow.length > 0 && targets.length > 0) {
+    const last = targets[targets.length - 1];
+    last.tabs = [...last.tabs ?? [], ...overflow];
+    last.active = 0;
+  }
+  return next;
+}
+try {
+  const w = window;
+  w.__dshWorktable = { ...w.__dshWorktable ?? {}, renameOverride, popoverPos, collectTabs, migrateTabsInto };
+} catch {
+}
+
 // src/client/photoStore.ts
 var DB_NAME = "dsh-worktable";
 var STORE = "photoRecords";
@@ -22845,12 +22887,7 @@ function WorktableSection(props) {
     });
   };
   const renameProject = (id, name) => {
-    persistProjects((prev) => {
-      const next = { ...prev.nameOverrides };
-      if (name.trim()) next[id] = name;
-      else delete next[id];
-      return { ...prev, nameOverrides: next };
-    });
+    persistProjects((prev) => ({ ...prev, nameOverrides: renameOverride(prev.nameOverrides, id, name) }));
   };
   const removeShortcut = (id) => {
     persistProjects((prev) => ({ ...prev, shortcuts: prev.shortcuts.filter((s) => s.id !== id) }));
@@ -22900,26 +22937,10 @@ function WorktableSection(props) {
     const layout = projects.layouts.find((l) => l.id === id);
     const meta = metas[id];
     const current = layout ?? projects.views[id];
-    const sources = current ? [...current.top ?? [], ...current.main].map((pp) => pp.tabs ?? []).filter((tabs) => tabs.length > 0) : [];
     const next = buildLayout(presetId, layout ? layout.title : meta?.name ?? id);
     next.id = id;
     next.icon = layout ? layout.icon : projects.iconOverrides[id] ?? meta?.icon;
-    const targets = [...next.left ? [next.left] : [], ...next.top ?? [], ...next.main];
-    let si = 0;
-    for (const pane of targets) {
-      if (si < sources.length) {
-        pane.tabs = sources[si];
-        pane.active = 0;
-        pane.content = null;
-        si++;
-      }
-    }
-    const overflow = sources.slice(si).flat();
-    if (overflow.length > 0 && targets.length > 0) {
-      const last = targets[targets.length - 1];
-      last.tabs = [...last.tabs ?? [], ...overflow];
-      last.active = 0;
-    }
+    migrateTabsInto(next, collectTabs(current));
     persistProjects((prev) => layout ? { ...prev, layouts: prev.layouts.map((l) => l.id === id ? next : l) } : { ...prev, views: { ...prev.views, [id]: next } });
     const wasOpen = splitStore.active && splitStore.spec?.id === id;
     if (wasOpen) {

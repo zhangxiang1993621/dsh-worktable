@@ -217,6 +217,20 @@ if (paneRun.status !== 0) {
 }
 console.log('[release-prep] pane restore tests passed (4 scenarios, on installed artifact)')
 
+// ---------- 5c4. 控制室卡片动作回归（重命名覆盖语义 / 标签迁入新拓扑 / 弹层锚点钳制） ----------
+const cardActionTest = join(HERE, '..', '04_test', 'console-card-actions.test.mjs')
+if (!existsSync(cardActionTest)) {
+  console.error('[release-prep] FAIL: console-card-actions.test.mjs missing')
+  process.exit(1)
+}
+const cardActionRun = spawnSync(process.execPath, [cardActionTest, join(inst, 'node_modules', 'dsh-worktable', 'lib', 'client.js')], { cwd: HERE, stdio: 'pipe', encoding: 'utf8' })
+if (cardActionRun.status !== 0) {
+  console.error('[release-prep] FAIL: console-card-actions.test.mjs')
+  console.error(cardActionRun.stderr || cardActionRun.stdout)
+  process.exit(1)
+}
+console.log('[release-prep] console card action tests passed (4 scenarios, on installed artifact)')
+
 // ---------- 5d. 服务端数据目录解析回归（loadPkg ↔ resolveDshHomeSafe 循环调用修复） ----------
 // 评估「安装目录中的最终产物」lib/index.js；官方路径 / 包不可解析兜底 / ~ 与相对路径展开
 const serverHomeTest = join(HERE, '..', '04_test', 'server-home.test.mjs')
