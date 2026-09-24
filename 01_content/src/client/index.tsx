@@ -796,6 +796,75 @@ export function pickProjectSession(
   return ids.find((sid) => !!loaded[sid]) ?? ids[0]
 }
 
+/** 项目「同目录」工作区（normProjectFolder 相等）；找不到 = null */
+function projectWorkspaceOf(folder: string | null | undefined, workspaces: any): any | null {
+  const want = normProjectFolder(String(folder ?? ''))
+  if (!want) return null
+  return (workspaces?.items ?? []).find((w: any) => normProjectFolder(String(w?.path ?? '')) === want) ?? null
+}
+
+/** 项目会话列表（纯函数）：同目录工作区的 sessionIds 顺序，跳过归档 / 子代理 / 悬空（不在 byId）id。
+ *  与 pickProjectSession 同源判定，额外滤掉悬空 id（侧栏看不到的脏记录不该出现在弹层里）。 */
+export function listProjectSessions(
+  folder: string | null | undefined,
+  workspaces: { items?: { path?: string; sessionIds?: string[] }[]; archivedSessionIds?: string[] } | null | undefined,
+  byId: Record<string, any> | null | undefined,
+  subagentIds: Set<string> | null | undefined,
+): { id: string; title: string }[] {
+  const sub = subagentIds ?? new Set<string>()
+  const ws = projectWorkspaceOf(folder, workspaces)
+  if (!ws) return []
+  const archived = new Set((workspaces?.archivedSessionIds ?? []).map(String))
+  const loaded = byId ?? {}
+  const seen = new Set<string>()
+  const out: { id: string; title: string }[] = []
+  for (const raw of ws.sessionIds ?? []) {
+    const sid = String(raw)
+    if (!sid || seen.has(sid)) continue
+    if (archived.has(sid) || sub.has(sid) || !loaded[sid]) continue
+    seen.add(sid)
+    const node = loaded[sid]
+    out.push({ id: sid, title: String(node?.title ?? node?.displayTitle ?? '').trim() })
+  }
+  return out
+}
+
+/** 弹层模型（纯函数）：空标题套占位 + 当前项打勾；当前会话不在列表时给一行只读「当前：…」 */
+export function sessionsMenuModel(
+  rows: { id: string; title: string }[],
+  currentId: string,
+  fallbackTitle: string,
+  currentTitle?: string,
+): { rows: { id: string; title: string; current: boolean }[]; orphan: { id: string; title: string } | null } {
+  const list = rows.map((r) => ({ id: r.id, title: r.title || fallbackTitle, current: r.id === currentId }))
+  const hit = list.some((r) => r.current)
+  const orphan = currentId && !hit
+    ? { id: currentId, title: String(currentTitle ?? '').trim() || fallbackTitle }
+    : null
+  return { rows: list, orphan }
+}
+
+/** 打开项目的目标决策（纯函数）：绑定优先 → 同目录第一个可用 → 有文件夹且可建 = create → 否则 none */
+export type ProjectOpenDecision =
+  | { action: 'open'; sessionId: string }
+  | { action: 'create' }
+  | { action: 'none' }
+
+export function decideProjectOpen(input: {
+  folder: string | null | undefined
+  binding: string | null | undefined
+  workspaces: any
+  byId: Record<string, any> | null | undefined
+  subagentIds: Set<string> | null | undefined
+  canCreate: boolean
+}): ProjectOpenDecision {
+  const hit = pickProjectSession(input.folder, input.binding, input.workspaces, input.byId, input.subagentIds ?? new Set<string>())
+  if (hit) return { action: 'open', sessionId: hit }
+  const folder = String(input.folder ?? '').trim()
+  if (!folder || !input.canCreate) return { action: 'none' }
+  return { action: 'create' }
+}
+
 /** 会话分组列表（模块级，供自定义窗会话选择与对话绑定弹窗共用） */
 async function fetchSessionGroups(): Promise<{ groups: { title: string; sessions: { id: string; title: string; isCurrent: boolean }[] }[]; current: string }> {
   try {
@@ -3780,3 +3849,15 @@ export function apply(ctx: any) {
 }
 
 export { WorktableSection }
+
+/** 纯逻辑调试出口（自动化验证用）：与 split.tsx / consoleEdit.ts 的同名对象合并写入。
+ *  注意必须合并，整体覆盖会把对方的出口冲掉。 */
+try {
+  const w = window as any
+  w.__dshWorktable = {
+    ...(w.__dshWorktable ?? {}),
+    listProjectSessions,
+    sessionsMenuModel,
+    decideProjectOpen,
+  }
+} catch {}

@@ -7538,11 +7538,14 @@ __export(index_exports, {
   WorktableSection: () => WorktableSection,
   apply: () => apply,
   createCustomSession: () => createCustomSession,
+  decideProjectOpen: () => decideProjectOpen,
   htmlProductCandidates: () => htmlProductCandidates,
   inject: () => inject,
+  listProjectSessions: () => listProjectSessions,
   normProjectFolder: () => normProjectFolder,
   pickProjectSession: () => pickProjectSession,
-  sendCustomToSession: () => sendCustomToSession
+  sendCustomToSession: () => sendCustomToSession,
+  sessionsMenuModel: () => sessionsMenuModel
 });
 module.exports = __toCommonJS(index_exports);
 var import_react2 = require("react");
@@ -21157,6 +21160,42 @@ function pickProjectSession(folder, binding, workspaces, byId, subagentIds) {
   const loaded = byId ?? {};
   return ids.find((sid) => !!loaded[sid]) ?? ids[0];
 }
+function projectWorkspaceOf(folder, workspaces) {
+  const want = normProjectFolder(String(folder ?? ""));
+  if (!want) return null;
+  return (workspaces?.items ?? []).find((w) => normProjectFolder(String(w?.path ?? "")) === want) ?? null;
+}
+function listProjectSessions(folder, workspaces, byId, subagentIds) {
+  const sub = subagentIds ?? /* @__PURE__ */ new Set();
+  const ws = projectWorkspaceOf(folder, workspaces);
+  if (!ws) return [];
+  const archived = new Set((workspaces?.archivedSessionIds ?? []).map(String));
+  const loaded = byId ?? {};
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const raw of ws.sessionIds ?? []) {
+    const sid = String(raw);
+    if (!sid || seen.has(sid)) continue;
+    if (archived.has(sid) || sub.has(sid) || !loaded[sid]) continue;
+    seen.add(sid);
+    const node = loaded[sid];
+    out.push({ id: sid, title: String(node?.title ?? node?.displayTitle ?? "").trim() });
+  }
+  return out;
+}
+function sessionsMenuModel(rows, currentId, fallbackTitle, currentTitle) {
+  const list2 = rows.map((r) => ({ id: r.id, title: r.title || fallbackTitle, current: r.id === currentId }));
+  const hit = list2.some((r) => r.current);
+  const orphan = currentId && !hit ? { id: currentId, title: String(currentTitle ?? "").trim() || fallbackTitle } : null;
+  return { rows: list2, orphan };
+}
+function decideProjectOpen(input) {
+  const hit = pickProjectSession(input.folder, input.binding, input.workspaces, input.byId, input.subagentIds ?? /* @__PURE__ */ new Set());
+  if (hit) return { action: "open", sessionId: hit };
+  const folder = String(input.folder ?? "").trim();
+  if (!folder || !input.canCreate) return { action: "none" };
+  return { action: "create" };
+}
 async function fetchSessionGroups() {
   try {
     const snap = sessionBridge?.list?.getSnapshot?.();
@@ -24219,6 +24258,16 @@ function apply(ctx) {
       }
     }
   }, WorktableSection), "dsh-worktable: worktable section");
+}
+try {
+  const w = window;
+  w.__dshWorktable = {
+    ...w.__dshWorktable ?? {},
+    listProjectSessions,
+    sessionsMenuModel,
+    decideProjectOpen
+  };
+} catch {
 }
 /*! Bundled license information:
 
