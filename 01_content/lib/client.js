@@ -21226,6 +21226,81 @@ async function applyProjectOpen(projectId, decision, io) {
     io.inFlight.delete(projectId);
   }
 }
+var bindProjectRef = { current: null };
+var projectCreateInFlight = /* @__PURE__ */ new Set();
+function afterSessionCreated(projectId, sessionId, bind) {
+  markPluginSessionOpen(sessionId);
+  if (!bind) return;
+  try {
+    bindProjectRef.current?.(projectId, sessionId);
+  } catch {
+  }
+}
+async function createProjectSession(projectId, folder, bind) {
+  const uw = (() => {
+    try {
+      return clientCtx?.get?.("uiWorkspace") ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  let workspaces = null;
+  try {
+    workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null;
+  } catch {
+  }
+  const ws = projectWorkspaceOf(folder, workspaces);
+  const wsId = ws?.workspaceId ?? ws?.id ?? null;
+  if (wsId && uw && typeof uw.openWorkspace === "function") {
+    let created = "";
+    try {
+      await uw.openWorkspace(wsId, (sid) => {
+        created = sid;
+        afterSessionCreated(projectId, sid, bind);
+      });
+      if (!created) {
+        try {
+          created = String(uw.selection?.getSnapshot?.()?.sessionId ?? "");
+        } catch {
+        }
+      }
+      return created || null;
+    } catch {
+    }
+    return null;
+  }
+  try {
+    const b = sessionBridge;
+    if (!b || typeof b.sessions?.create !== "function") return null;
+    const createOpts = folder ? { cwd: folder } : {};
+    const sid = await b.sessions.create(createOpts);
+    if (!sid) return null;
+    await ensureSessionPreset(sid);
+    await ensureSessionModel(sid);
+    afterSessionCreated(projectId, sid, bind);
+    openMainSession(sid);
+    return sid;
+  } catch {
+    return null;
+  }
+}
+function buildSessionMenuModel(folder, fallbackTitle) {
+  let workspaces = null;
+  let byId = {};
+  let sub = /* @__PURE__ */ new Set();
+  try {
+    workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null;
+    const snap = sessionBridge?.list?.getSnapshot?.();
+    byId = snap?.byId ?? {};
+    sub = subagentSessionIds(snap);
+  } catch {
+  }
+  const rows = listProjectSessions(folder, workspaces, byId, sub);
+  const currentId = currentMainSessionId();
+  const node = byId?.[currentId];
+  const currentTitle = String(node?.title ?? node?.displayTitle ?? "");
+  return sessionsMenuModel(rows, currentId, fallbackTitle, currentTitle);
+}
 async function fetchSessionGroups() {
   try {
     const snap = sessionBridge?.list?.getSnapshot?.();
@@ -22115,6 +22190,33 @@ function WorktableSection(props) {
           } catch {
           }
         }
+      },
+      projectSessions: {
+        hasFolder: (pid) => !!projectsRef.current.projects.folders[pid],
+        list: (pid, fallbackTitle) => buildSessionMenuModel(projectsRef.current.projects.folders[pid] ?? null, fallbackTitle),
+        current: () => currentMainSessionId(),
+        // 用户在工作台内主动选会话：豁免「切到非绑定会话 = 自动关项目」联动
+        open: (_pid, sid) => {
+          markPluginSessionOpen(sid);
+          projectAttachRef.attached = sid;
+          openMainSession(sid);
+        },
+        // 手动新建 → 自动绑定该项目（分层绑定语义）；与兜底新建共用同一把并发锁
+        create: (pid) => applyProjectOpen(pid, { action: "create" }, {
+          open: (sid) => {
+            projectAttachRef.attached = sid;
+            openMainSession(sid);
+          },
+          create: () => createProjectSession(pid, projectsRef.current.projects.folders[pid] ?? null, true),
+          inFlight: projectCreateInFlight
+        }),
+        // 列表变化订阅：复用控制室的统一通知源（会话快照 / 项目表变化都会 notifyConsole）
+        subscribe: (_pid, cb) => {
+          consoleListeners.add(cb);
+          return () => {
+            consoleListeners.delete(cb);
+          };
+        }
       }
     };
     setSplitEnv(env);
@@ -22151,6 +22253,14 @@ function WorktableSection(props) {
       return next;
     });
   };
+  (0, import_react2.useEffect)(() => {
+    bindProjectRef.current = (pid, sid) => {
+      persistProjects((prev) => ({ ...prev, bindings: { ...prev.bindings, [pid]: sid } }));
+    };
+    return () => {
+      bindProjectRef.current = null;
+    };
+  }, []);
   (0, import_react2.useEffect)(() => {
     const saved = projects.views[CONSOLE_ID];
     if (!specHasConsoleTab(saved)) {
@@ -22341,9 +22451,38 @@ function WorktableSection(props) {
       let prev = null;
       prev = currentMainSessionId() || null;
       projectAttachRef.sessionId = prev;
-      const target = resolveProjectTarget(spec.id);
-      projectAttachRef.attached = target ?? prev;
-      if (target) openMainSession(target);
+      projectAttachRef.attached = resolveProjectTarget(spec.id) ?? prev;
+      try {
+        const pr = projectsRef.current.projects;
+        let workspaces = null;
+        let byId = {};
+        let sub = /* @__PURE__ */ new Set();
+        try {
+          workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null;
+          const snap = sessionBridge?.list?.getSnapshot?.();
+          byId = snap?.byId ?? {};
+          sub = subagentSessionIds(snap);
+        } catch {
+        }
+        const decision = decideProjectOpen({
+          folder: pr.folders[spec.id] ?? null,
+          binding: pr.bindings[spec.id] ?? null,
+          workspaces,
+          byId,
+          subagentIds: sub,
+          canCreate: typeof sessionBridge?.sessions?.create === "function"
+        });
+        const openTo = (sid) => {
+          projectAttachRef.attached = sid;
+          openMainSession(sid);
+        };
+        void applyProjectOpen(spec.id, decision, {
+          open: openTo,
+          create: () => createProjectSession(spec.id, pr.folders[spec.id] ?? null, false),
+          inFlight: projectCreateInFlight
+        });
+      } catch {
+      }
       ackProjectNotify(spec.id);
       const pending = pendingMountRef.current[spec.id];
       if (pending) {

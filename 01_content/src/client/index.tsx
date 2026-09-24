@@ -901,6 +901,72 @@ export async function applyProjectOpen(
   }
 }
 
+/** 组件注入的「项目→会话」绑定写入器（模块级联动逻辑用；未注入 = 不写绑定） */
+const bindProjectRef: { current: ((projectId: string, sessionId: string) => void) | null } = { current: null }
+/** 兜底自动新建的并发去重：必须**跨调用共享**（模块级单例）；每次 new Set() 会让 applyProjectOpen 的去重静默失效 */
+const projectCreateInFlight = new Set<string>()
+
+/** 建会话后的收尾：豁免「切会话关项目」，手动入口再写绑定（兜底自动新建不写，保持「未绑定 = 每次重解析」语义） */
+function afterSessionCreated(projectId: string, sessionId: string, bind: boolean) {
+  markPluginSessionOpen(sessionId)
+  if (!bind) return
+  try { bindProjectRef.current?.(projectId, sessionId) } catch {}
+}
+
+/** 新建项目会话（方案 1）：
+ *  ① 项目文件夹已有同目录工作区且宿主支持 → uiWorkspace.openWorkspace(wsId, beforeOpen)（宿主自己复用空会话/新建）；
+ *  ② 否则回落 sessions.create({ cwd: 文件夹 }) + 预设/模型修复 + 切主视图（老宿主与无工作区都走这条）。
+ *  返回新会话 id；任何失败返回 null（静默，调用方只提示不抛）。 */
+async function createProjectSession(projectId: string, folder: string | null, bind: boolean): Promise<string | null> {
+  const uw = (() => { try { return clientCtx?.get?.('uiWorkspace') ?? null } catch { return null } })()
+  let workspaces: any = null
+  try { workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null } catch {}
+  const ws = projectWorkspaceOf(folder, workspaces)
+  const wsId = ws?.workspaceId ?? ws?.id ?? null
+  if (wsId && uw && typeof uw.openWorkspace === 'function') {
+    let created = ''
+    try {
+      await uw.openWorkspace(wsId, (sid: string) => { created = sid; afterSessionCreated(projectId, sid, bind) })
+      // beforeOpen 未被宿主调用（未来 API 变动）时退回 selection 快照，仍拿不到就不返回 id
+      if (!created) { try { created = String(uw.selection?.getSnapshot?.()?.sessionId ?? '') } catch {} }
+      return created || null
+    } catch { /* 宿主建会话失败 → 交给调用方提示，不再回落第二个通道（避免建出两个会话） */ }
+    return null
+  }
+  try {
+    const b = sessionBridge
+    if (!b || typeof b.sessions?.create !== 'function') return null
+    const createOpts: any = folder ? { cwd: folder } : {}
+    const sid = await b.sessions.create(createOpts)
+    if (!sid) return null
+    await ensureSessionPreset(sid)
+    await ensureSessionModel(sid)
+    afterSessionCreated(projectId, sid, bind)
+    openMainSession(sid)
+    return sid
+  } catch {
+    return null
+  }
+}
+
+/** 实时快照 → 弹层模型（列表 + 打勾 + 未命中时的「当前：…」补行）；folder 由组件传入（模块级读不到 projectsRef） */
+function buildSessionMenuModel(folder: string | null, fallbackTitle: string) {
+  let workspaces: any = null
+  let byId: Record<string, any> = {}
+  let sub = new Set<string>()
+  try {
+    workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null
+    const snap = sessionBridge?.list?.getSnapshot?.()
+    byId = snap?.byId ?? {}
+    sub = subagentSessionIds(snap)
+  } catch {}
+  const rows = listProjectSessions(folder, workspaces, byId, sub)
+  const currentId = currentMainSessionId()
+  const node = byId?.[currentId]
+  const currentTitle = String(node?.title ?? node?.displayTitle ?? '')
+  return sessionsMenuModel(rows, currentId, fallbackTitle, currentTitle)
+}
+
 /** 会话分组列表（模块级，供自定义窗会话选择与对话绑定弹窗共用） */
 async function fetchSessionGroups(): Promise<{ groups: { title: string; sessions: { id: string; title: string; isCurrent: boolean }[] }[]; current: string }> {
   try {
@@ -1816,6 +1882,30 @@ function WorktableSection(props: any) {
           try { mountProductInto(pid, key, row, paneIndex) } catch {}
         },
       },
+      projectSessions: {
+        hasFolder: (pid: string) => !!projectsRef.current.projects.folders[pid],
+        list: (pid: string, fallbackTitle: string) =>
+          buildSessionMenuModel(projectsRef.current.projects.folders[pid] ?? null, fallbackTitle),
+        current: () => currentMainSessionId(),
+        // 用户在工作台内主动选会话：豁免「切到非绑定会话 = 自动关项目」联动
+        open: (_pid: string, sid: string) => {
+          markPluginSessionOpen(sid)
+          projectAttachRef.attached = sid
+          openMainSession(sid)
+        },
+        // 手动新建 → 自动绑定该项目（分层绑定语义）；与兜底新建共用同一把并发锁
+        create: (pid: string) =>
+          applyProjectOpen(pid, { action: 'create' }, {
+            open: (sid: string) => { projectAttachRef.attached = sid; openMainSession(sid) },
+            create: () => createProjectSession(pid, projectsRef.current.projects.folders[pid] ?? null, true),
+            inFlight: projectCreateInFlight,
+          }),
+        // 列表变化订阅：复用控制室的统一通知源（会话快照 / 项目表变化都会 notifyConsole）
+        subscribe: (_pid: string, cb: () => void) => {
+          consoleListeners.add(cb)
+          return () => { consoleListeners.delete(cb) }
+        },
+      },
     }
     setSplitEnv(env)
     try { (window as any).__dshCustomEnv = env } catch {}
@@ -1838,6 +1928,14 @@ function WorktableSection(props: any) {
       return next
     })
   }
+
+  // 模块级联动逻辑（createProjectSession）需要写绑定；把组件作用域的 persistProjects 注入进去
+  useEffect(() => {
+    bindProjectRef.current = (pid: string, sid: string) => {
+      persistProjects((prev) => ({ ...prev, bindings: { ...prev.bindings, [pid]: sid } }))
+    }
+    return () => { bindProjectRef.current = null }
+  }, [])
 
   // 自愈：启动时若控制室存档是坏布局（旧版关掉控制室标签造成窗格退化成选择器），立即重建默认面板
   useEffect(() => {
@@ -2065,10 +2163,34 @@ function buildCustomLayoutPrompt(req: string): string {
       let prev: string | null = null
       prev = currentMainSessionId() || null
       projectAttachRef.sessionId = prev
-      const target = resolveProjectTarget(spec.id)
-      projectAttachRef.attached = target ?? prev
-      // 绑定若指向子代理会话（用户面板看不到它，普通地址读历史会被宿主拒 session/agent-busy），视为无绑定
-      if (target) openMainSession(target)
+      // 归属对话：绑定优先 → 同目录第一个可用 → 都没有且项目已设文件夹则兜底新建（决策纯逻辑在 decideProjectOpen）
+      projectAttachRef.attached = resolveProjectTarget(spec.id) ?? prev
+      try {
+        const pr = projectsRef.current.projects
+        let workspaces: any = null
+        let byId: Record<string, any> = {}
+        let sub = new Set<string>()
+        try {
+          workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null
+          const snap = sessionBridge?.list?.getSnapshot?.()
+          byId = snap?.byId ?? {}
+          sub = subagentSessionIds(snap)
+        } catch {}
+        const decision = decideProjectOpen({
+          folder: pr.folders[spec.id] ?? null,
+          binding: pr.bindings[spec.id] ?? null,
+          workspaces,
+          byId,
+          subagentIds: sub,
+          canCreate: typeof sessionBridge?.sessions?.create === 'function',
+        })
+        const openTo = (sid: string) => { projectAttachRef.attached = sid; openMainSession(sid) }
+        void applyProjectOpen(spec.id, decision, {
+          open: openTo,
+          create: () => createProjectSession(spec.id, pr.folders[spec.id] ?? null, false),
+          inFlight: projectCreateInFlight,
+        })
+      } catch { /* 联动失败不影响项目本身已经打开 */ }
       ackProjectNotify(spec.id)
       // 补挂：此前项目未打开时暂存的产物（entries = 多窗口挂载列表），现在自动挂进各目标窗格；
       // 全部落位成功记录指纹（供自愈扫挂去重）
