@@ -195,6 +195,11 @@ const SUB = new Set(['s4'])
   if (listProjectSessions('', WS, BYID, SUB).length !== 0) fail('list.noFolder', '空路径应返回 []')
   if (listProjectSessions('D:\\nope', WS, BYID, SUB).length !== 0) fail('list.noWs', '无同目录工作区应返回 []')
   if (listProjectSessions('D:\\proj\\demo', { items: [] }, BYID, SUB).length !== 0) fail('list.emptyWs', '空工作区列表应返回 []')
+  // 去重 + displayTitle 回退（局部夹具，不动共享夹具以免影响其他断言）
+  const wsDup = { items: [{ workspaceId: 'wd', path: 'D:\\dup', sessionIds: ['a', 'a', 'b'] }], archivedSessionIds: [] }
+  const rowsDup = listProjectSessions('D:\\dup', wsDup, { a: { title: 'A' }, b: { displayTitle: 'B 显示名' }, c: { title: 'C' } }, new Set())
+  if (rowsDup.length !== 2 || rowsDup[0].id !== 'a' || rowsDup[1].id !== 'b') fail('list.dedupe', JSON.stringify(rowsDup))
+  if (rowsDup[1].title !== 'B 显示名') fail('list.displayTitle', JSON.stringify(rowsDup[1]))
   ok('listProjectSessions')
 }
 
@@ -233,6 +238,13 @@ const SUB = new Set(['s4'])
   if (d6.action !== 'none') fail('decide.noFolder', JSON.stringify(d6))
   const d7 = decideProjectOpen({ ...base, workspaces: null, byId: null, subagentIds: null })
   if (d7.action !== 'create') fail('decide.nullSafe', JSON.stringify(d7))
+  // pin（reviewer Important）：工作区存在但会话全部未载入（不在 byId）→ 保持既有 pickProjectSession 语义
+  // = 打开首个 id（**不新建**，否则会在已有会话的同目录里重复建会话）。菜单侧仍按"悬空 = 不显示"过滤。
+  const d8 = decideProjectOpen({ ...base, workspaces: { items: [{ path: 'D:\\proj\\demo', sessionIds: ['ghost'] }], archivedSessionIds: [] }, byId: {} })
+  if (d8.action !== 'open' || d8.sessionId !== 'ghost') fail('decide.unloaded', JSON.stringify(d8))
+  // pin：绑定到不在 byId 的会话 = 仍按绑定打开（未载入 ≠ 非法）
+  const d9 = decideProjectOpen({ ...base, binding: 'ghostbind', byId: {} })
+  if (d9.action !== 'open' || d9.sessionId !== 'ghostbind') fail('decide.unloadedBind', JSON.stringify(d9))
   ok('decideProjectOpen')
 }
 

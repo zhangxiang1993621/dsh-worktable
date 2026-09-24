@@ -783,9 +783,7 @@ export function pickProjectSession(
   const sub = subagentIds ?? new Set<string>()
   const bind = String(binding ?? '')
   if (bind && !sub.has(bind)) return bind
-  const want = normProjectFolder(String(folder ?? ''))
-  if (!want) return null
-  const ws = (workspaces?.items ?? []).find((w) => normProjectFolder(String(w?.path ?? '')) === want)
+  const ws = projectWorkspaceOf(folder, workspaces)
   if (!ws) return null
   const archived = new Set((workspaces?.archivedSessionIds ?? []).map(String))
   const ids = (ws.sessionIds ?? [])

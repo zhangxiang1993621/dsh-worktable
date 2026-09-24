@@ -21150,9 +21150,7 @@ function pickProjectSession(folder, binding, workspaces, byId, subagentIds) {
   const sub = subagentIds ?? /* @__PURE__ */ new Set();
   const bind = String(binding ?? "");
   if (bind && !sub.has(bind)) return bind;
-  const want = normProjectFolder(String(folder ?? ""));
-  if (!want) return null;
-  const ws = (workspaces?.items ?? []).find((w) => normProjectFolder(String(w?.path ?? "")) === want);
+  const ws = projectWorkspaceOf(folder, workspaces);
   if (!ws) return null;
   const archived = new Set((workspaces?.archivedSessionIds ?? []).map(String));
   const ids = (ws.sessionIds ?? []).map(String).filter((sid) => sid && !archived.has(sid) && !sub.has(sid));
