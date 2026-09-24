@@ -197,8 +197,9 @@ const SUB = new Set(['s4'])
   if (listProjectSessions('D:\\proj\\demo', { items: [] }, BYID, SUB).length !== 0) fail('list.emptyWs', '空工作区列表应返回 []')
   // 去重 + displayTitle 回退（局部夹具，不动共享夹具以免影响其他断言）
   const wsDup = { items: [{ workspaceId: 'wd', path: 'D:\\dup', sessionIds: ['a', 'a', 'b'] }], archivedSessionIds: [] }
-  const rowsDup = listProjectSessions('D:\\dup', wsDup, { a: { title: 'A' }, b: { displayTitle: 'B 显示名' }, c: { title: 'C' } }, new Set())
+  const rowsDup = listProjectSessions('D:\\dup', wsDup, { a: { title: '  A  ' }, b: { displayTitle: '  B 显示名  ' }, c: { title: 'C' } }, new Set())
   if (rowsDup.length !== 2 || rowsDup[0].id !== 'a' || rowsDup[1].id !== 'b') fail('list.dedupe', JSON.stringify(rowsDup))
+  if (rowsDup[0].title !== 'A') fail('list.trimTitle', JSON.stringify(rowsDup[0]))
   if (rowsDup[1].title !== 'B 显示名') fail('list.displayTitle', JSON.stringify(rowsDup[1]))
   ok('listProjectSessions')
 }
