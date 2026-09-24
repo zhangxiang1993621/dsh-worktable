@@ -867,7 +867,8 @@ export function decideProjectOpen(input: {
  *  - open：直接切（切到已有会话，不绑定）；
  *  - create：同项目并发去重后建会话再切（**不绑定**——兜底自动新建保持"未绑定 = 每次重解析"语义）；
  *  - none：不动；
- *  任何失败（含 io.open 抛错）静默为 'failed'，绝不向调用方抛异常——打开项目本身不能被联动失败拖垮。
+ *  io.open / io.create 的失败一律静默为 'failed'（不向调用方抛异常）——打开项目本身不能被联动失败拖垮；
+ *  inFlight 的集合操作假定不抛（普通 Set，无副作用）。
  *  注意：'skipped' 有**两种**含义（none / 同项目已有 create 在途），调用方不得把它读成"什么都没发生"；
  *  io.inFlight 必须是**跨调用共享**的实例（接线时用模块级单例），每次 new Set() 会让并发去重静默失效。 */
 export async function applyProjectOpen(
@@ -881,7 +882,7 @@ export async function applyProjectOpen(
       io.open(decision.sessionId)
       return 'opened'
     } catch (err) {
-      console.warn('[dsh-worktable] open project session failed', err)
+      try { if (typeof console !== 'undefined' && console.warn) console.warn('[dsh-worktable] open project session failed', err) } catch {}
       return 'failed'
     }
   }
@@ -893,7 +894,7 @@ export async function applyProjectOpen(
     io.open(sid)
     return 'created'
   } catch (err) {
-    console.warn('[dsh-worktable] create project session failed', err)
+    try { if (typeof console !== 'undefined' && console.warn) console.warn('[dsh-worktable] create project session failed', err) } catch {}
     return 'failed'
   } finally {
     io.inFlight.delete(projectId)

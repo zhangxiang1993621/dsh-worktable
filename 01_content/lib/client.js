@@ -21202,7 +21202,10 @@ async function applyProjectOpen(projectId, decision, io) {
       io.open(decision.sessionId);
       return "opened";
     } catch (err) {
-      console.warn("[dsh-worktable] open project session failed", err);
+      try {
+        if (typeof console !== "undefined" && console.warn) console.warn("[dsh-worktable] open project session failed", err);
+      } catch {
+      }
       return "failed";
     }
   }
@@ -21214,7 +21217,10 @@ async function applyProjectOpen(projectId, decision, io) {
     io.open(sid);
     return "created";
   } catch (err) {
-    console.warn("[dsh-worktable] create project session failed", err);
+    try {
+      if (typeof console !== "undefined" && console.warn) console.warn("[dsh-worktable] create project session failed", err);
+    } catch {
+    }
     return "failed";
   } finally {
     io.inFlight.delete(projectId);

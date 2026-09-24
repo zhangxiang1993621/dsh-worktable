@@ -297,6 +297,18 @@ const SUB = new Set(['s4'])
   if (c !== 'created' || d !== 'created') fail('apply.twoKeys', c + '/' + d)
   if (created2.filter((x) => x[0] === 'create').length !== 2) fail('apply.twoKeysCreate', JSON.stringify(created2))
   if (created2.filter((x) => x[0] === 'open').length !== 2) fail('apply.twoKeysOpen', JSON.stringify(created2))
+  const openSids = created2.filter((x) => x[0] === 'open').map((x) => x[1]).sort()
+  if (openSids.join(',') !== 'k1,k2') fail('apply.twoKeysOpenSids', JSON.stringify(openSids))
+  // inFlight 必须是调用方注入的共享实例：预置在途 key 时直接跳过，且不得再调 create
+  const seedCalls = []
+  const ioS = {
+    open: (sid) => seedCalls.push(['open', sid]),
+    create: async () => { seedCalls.push(['create']); return 'zz' },
+    inFlight: new Set(['pSeed']),
+  }
+  const rS = await applyProjectOpen('pSeed', { action: 'create' }, ioS)
+  if (rS !== 'skipped') fail('apply.seeded', rS)
+  if (seedCalls.length !== 0) fail('apply.seededCalls', JSON.stringify(seedCalls))
   ok('applyProjectOpen create（并发去重）')
 }
 
