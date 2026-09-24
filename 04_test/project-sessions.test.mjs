@@ -257,6 +257,13 @@ const SUB = new Set(['s4'])
   if (r1 !== 'skipped' || calls.length !== 0) fail('apply.none', r1 + ' ' + JSON.stringify(calls))
   const r2 = await applyProjectOpen('p1', { action: 'open', sessionId: 's9' }, io)
   if (r2 !== 'opened' || calls.length !== 1 || calls[0][0] !== 'open' || calls[0][1] !== 's9') fail('apply.open', JSON.stringify(calls))
+  // 契约：任何失败（含 io.open 抛错）必须静默为 'failed'，绝不冒泡给调用方
+  const ioThrow = { open: () => { throw new Error('open boom') }, create: async () => 'x', inFlight: new Set() }
+  let threw = false
+  let r3 = ''
+  try { r3 = await applyProjectOpen('p1', { action: 'open', sessionId: 's9' }, ioThrow) } catch { threw = true }
+  if (threw) fail('apply.openThrowThrew', 'io.open 抛错冒泡到了调用方')
+  if (r3 !== 'failed') fail('apply.openThrow', r3)
   ok('applyProjectOpen open/none')
 }
 
@@ -276,6 +283,20 @@ const SUB = new Set(['s4'])
   if (created.filter((c) => c[0] === 'create').length !== 1) fail('apply.raceCreate', JSON.stringify(created))
   if (created.filter((c) => c[0] === 'open').length !== 1 || created.at(-1)[1] !== 'new2') fail('apply.raceOpen', JSON.stringify(created))
   if (io.inFlight.size !== 0) fail('apply.inFlight', '并发结束后 inFlight 未清空')
+  // 不同 projectId 互不去重（key 作用域）
+  const created2 = []
+  const io2 = {
+    open: (sid) => created2.push(['open', sid]),
+    create: async () => { created2.push(['create']); return 'k' + created2.filter((x) => x[0] === 'create').length },
+    inFlight: new Set(),
+  }
+  const [c, d] = await Promise.all([
+    applyProjectOpen('pA', { action: 'create' }, io2),
+    applyProjectOpen('pB', { action: 'create' }, io2),
+  ])
+  if (c !== 'created' || d !== 'created') fail('apply.twoKeys', c + '/' + d)
+  if (created2.filter((x) => x[0] === 'create').length !== 2) fail('apply.twoKeysCreate', JSON.stringify(created2))
+  if (created2.filter((x) => x[0] === 'open').length !== 2) fail('apply.twoKeysOpen', JSON.stringify(created2))
   ok('applyProjectOpen create（并发去重）')
 }
 

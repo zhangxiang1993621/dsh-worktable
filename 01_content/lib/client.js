@@ -21198,8 +21198,13 @@ function decideProjectOpen(input) {
 async function applyProjectOpen(projectId, decision, io) {
   if (decision.action === "none") return "skipped";
   if (decision.action === "open") {
-    io.open(decision.sessionId);
-    return "opened";
+    try {
+      io.open(decision.sessionId);
+      return "opened";
+    } catch (err) {
+      console.warn("[dsh-worktable] open project session failed", err);
+      return "failed";
+    }
   }
   if (io.inFlight.has(projectId)) return "skipped";
   io.inFlight.add(projectId);
@@ -21208,7 +21213,8 @@ async function applyProjectOpen(projectId, decision, io) {
     if (!sid) return "failed";
     io.open(sid);
     return "created";
-  } catch {
+  } catch (err) {
+    console.warn("[dsh-worktable] create project session failed", err);
     return "failed";
   } finally {
     io.inFlight.delete(projectId);
