@@ -20112,14 +20112,19 @@ function ProjectSessionsMenu(props) {
     }
     try {
       setModel(api2.list(props.projectId, T("session.newTitle")));
-    } catch {
+    } catch (err) {
       setModel({ rows: [], orphan: null });
+      try {
+        if (typeof console !== "undefined" && console.warn) console.warn("[dsh-worktable] session menu refresh failed", err);
+      } catch {
+      }
     }
   }, [props.projectId]);
   (0, import_react.useEffect)(() => {
     const api2 = splitEnv?.projectSessions;
     if (!api2 || !api2.hasFolder(props.projectId)) return;
     refresh();
+    if (!open) return;
     let un;
     try {
       un = api2.subscribe(props.projectId, refresh);
@@ -20143,7 +20148,7 @@ function ProjectSessionsMenu(props) {
       if (r === "created" || r === "opened") {
         setOpen(false);
         refresh();
-      } else setFailed(true);
+      } else if (r === "failed") setFailed(true);
     } catch {
       setFailed(true);
     } finally {
@@ -20160,6 +20165,7 @@ function ProjectSessionsMenu(props) {
         "aria-label": T("session.menu"),
         "aria-expanded": open,
         onClick: () => {
+          setFailed(false);
           setOpen((v) => !v);
           refresh();
         },
@@ -21388,20 +21394,15 @@ async function createProjectSession(projectId, folder, bind) {
   }
   const ws = projectWorkspaceOf(folder, workspaces);
   const wsId = ws?.workspaceId ?? ws?.id ?? null;
-  if (wsId && uw && typeof uw.openWorkspace === "function") {
-    let created = "";
+  if (wsId && uw && typeof uw.connectWorkspace === "function") {
     try {
-      await uw.openWorkspace(wsId, (sid) => {
-        created = sid;
-        afterSessionCreated(projectId, sid, bind);
-      });
-      if (!created) {
-        try {
-          created = String(uw.selection?.getSnapshot?.()?.sessionId ?? "");
-        } catch {
-        }
-      }
-      return created || null;
+      const sid = await uw.connectWorkspace(wsId);
+      if (!sid) return null;
+      afterSessionCreated(projectId, sid, bind);
+      await ensureSessionPreset(sid);
+      await ensureSessionModel(sid);
+      openMainSession(sid);
+      return sid;
     } catch {
     }
     return null;

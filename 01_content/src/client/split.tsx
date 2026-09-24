@@ -334,13 +334,13 @@ type SplitEnv = {
     /** 该项目是否已设文件夹 */
     hasFolder: (projectId: string) => boolean
     /** 弹层模型：列表（当前项打勾）+ 未命中当前会话时的只读补行；fallbackTitle 由引擎侧 T('session.newTitle') 传入 */
-    list: (projectId: string, fallbackTitle: string) => { rows: ProjectSessionRow[]; orphan: ProjectSessionRow | null }
+    list: (projectId: string, fallbackTitle: string) => { rows: ProjectSessionRow[]; orphan: { id: string; title: string } | null }
     /** 当前主视图会话 id */
     current: () => string
     /** 切换（用户主动选择；工作台内部豁免「切会话关项目」） */
     open: (projectId: string, sessionId: string) => void
     /** 新建（手动入口 → 自动绑定）；'created' | 'failed' | 'skipped' */
-    create: (projectId: string) => Promise<'created' | 'failed' | 'skipped'>
+    create: (projectId: string) => Promise<'opened' | 'created' | 'failed' | 'skipped'>
     /** 列表变化订阅 */
     subscribe: (projectId: string, cb: () => void) => () => void
   }
@@ -3261,12 +3261,17 @@ function ProjectSessionsMenu(props: { projectId: string }) {
   const refresh = useCallback(() => {
     const api = splitEnv?.projectSessions
     if (!api) { setModel({ rows: [], orphan: null }); return }
-    try { setModel(api.list(props.projectId, T('session.newTitle'))) } catch { setModel({ rows: [], orphan: null }) }
+    try { setModel(api.list(props.projectId, T('session.newTitle'))) } catch (err) {
+      setModel({ rows: [], orphan: null })
+      try { if (typeof console !== 'undefined' && console.warn) console.warn('[dsh-worktable] session menu refresh failed', err) } catch {}
+    }
   }, [props.projectId])
   useEffect(() => {
     const api = splitEnv?.projectSessions
     if (!api || !api.hasFolder(props.projectId)) return
     refresh()
+    // 仅弹层打开期间订阅全局通知源：保活池里的隐藏层不订阅，避免每次会话快照都重渲染
+    if (!open) return
     let un: (() => void) | undefined
     try { un = api.subscribe(props.projectId, refresh) } catch {}
     return () => { try { un?.() } catch {} }
@@ -3279,7 +3284,9 @@ function ProjectSessionsMenu(props: { projectId: string }) {
     setFailed(false)
     try {
       const r = await api.create(props.projectId)
-      if (r === 'created' || r === 'opened') { setOpen(false); refresh() } else setFailed(true)
+      if (r === 'created' || r === 'opened') { setOpen(false); refresh() }
+      else if (r === 'failed') setFailed(true)
+      // 'skipped' = 同项目已有一次新建在途（见 applyProjectOpen 的注释）：不报错，等 subscribe 刷新
     } catch { setFailed(true) } finally { setBusy(false) }
   }
   return (
@@ -3290,7 +3297,7 @@ function ProjectSessionsMenu(props: { projectId: string }) {
         title={T('session.menu')}
         aria-label={T('session.menu')}
         aria-expanded={open}
-        onClick={() => { setOpen((v) => !v); refresh() }}
+        onClick={() => { setFailed(false); setOpen((v) => !v); refresh() }}
       >💬</button>
       {open && (
         <div className="dsh-wt_widgetPop" role="menu">

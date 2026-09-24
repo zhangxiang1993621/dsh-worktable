@@ -923,13 +923,21 @@ async function createProjectSession(projectId: string, folder: string | null, bi
   try { workspaces = sessionBridge?.workspaces?.list?.getSnapshot?.() ?? null } catch {}
   const ws = projectWorkspaceOf(folder, workspaces)
   const wsId = ws?.workspaceId ?? ws?.id ?? null
-  if (wsId && uw && typeof uw.openWorkspace === 'function') {
-    let created = ''
+  // 宿主通道：connectWorkspace = 复用该工作区的空会话或新建（宿主语义），返回 sessionId 且**不切主视图**，
+  // 因此能在切换前先写绑定/豁免，并补上与 cwd 分支同款的预设/模型修复。
+  // 不用 openWorkspace：它的 beforeOpen 在宿主 superseded 时不会被调用（无 id 可绑定），
+  // 而 uw.selection 是宿主私有字段（不在公开接口内），读它会把"当前选择"当成新建结果（假 created + 抢主视图）。
+  if (wsId && uw && typeof uw.connectWorkspace === 'function') {
     try {
-      await uw.openWorkspace(wsId, (sid: string) => { created = sid; afterSessionCreated(projectId, sid, bind) })
-      // beforeOpen 未被宿主调用（未来 API 变动）时退回 selection 快照，仍拿不到就不返回 id
-      if (!created) { try { created = String(uw.selection?.getSnapshot?.()?.sessionId ?? '') } catch {} }
-      return created || null
+      const sid = await uw.connectWorkspace(wsId)
+      if (!sid) return null
+      afterSessionCreated(projectId, sid, bind)
+      // 宿主 connectWorkspace 内部是裸 sessions.create({ workspaceId })：不套部署默认预设、不修失效模型，
+      // 正是仓库已记录的 model-unavailable 症状来源，故显式补齐（与 cwd 分支一致）
+      await ensureSessionPreset(sid)
+      await ensureSessionModel(sid)
+      openMainSession(sid)
+      return sid
     } catch { /* 宿主建会话失败 → 交给调用方提示，不再回落第二个通道（避免建出两个会话） */ }
     return null
   }
