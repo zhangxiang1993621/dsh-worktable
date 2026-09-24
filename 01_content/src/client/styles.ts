@@ -379,6 +379,11 @@ export const css = xtermCss + '\n' + [
   '.dsh-wt_widgetRow:disabled{opacity:.45;cursor:not-allowed}',
   '.dsh-wt_widgetWin{flex:none;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}',
   '.dsh-wt_widgetName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dsh-wt_sessionMark{flex:none;width:12px;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}',
+  '.dsh-wt_sessionOrphan{opacity:.7;cursor:default}',
+  '.dsh-wt_sessionEmpty{padding:6px;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}',
+  '.dsh-wt_sessionNew{margin-top:4px;border-top:1px solid var(--dsw-alias-border-l1,#262b36);padding-top:8px}',
+  '.dsh-wt_sessionFail{padding:4px 6px 2px;color:#f07171;font-size:11px}',
   // + 右侧弹出面板
   '.dsh-wt_popBackdrop{position:fixed;left:0;top:0;right:0;bottom:0;z-index:79;background:transparent}',
   // 删除二次确认（fixed 居中模态，压在弹窗之上）

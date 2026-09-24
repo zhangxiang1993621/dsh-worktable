@@ -248,6 +248,10 @@ export type WidgetEntry = {
   mountable: boolean
 }
 
+/** 弹层一行：会话 id/标题 + 是否当前项 */
+export type ProjectSessionRow = { id: string; title: string; current: boolean }
+
+
 type SplitEnv = {
   getScope: () => SplitScope | null
   getJobs: () => SplitJob[]
@@ -324,6 +328,21 @@ type SplitEnv = {
     products: (projectId: string) => Promise<{ key: string; title: string; kind: string }[]>
     /** 把产物挂到**指定窗格**（lockPane 语义；key 来自 products()） */
     mountProduct: (projectId: string, key: string, row: string, paneIndex: number) => void
+  }
+  /** 项目会话（分栏标题栏「💬」按钮的数据与动作；项目未设文件夹 = 整块不渲染） */
+  projectSessions?: {
+    /** 该项目是否已设文件夹 */
+    hasFolder: (projectId: string) => boolean
+    /** 弹层模型：列表（当前项打勾）+ 未命中当前会话时的只读补行；fallbackTitle 由引擎侧 T('session.newTitle') 传入 */
+    list: (projectId: string, fallbackTitle: string) => { rows: ProjectSessionRow[]; orphan: ProjectSessionRow | null }
+    /** 当前主视图会话 id */
+    current: () => string
+    /** 切换（用户主动选择；工作台内部豁免「切会话关项目」） */
+    open: (projectId: string, sessionId: string) => void
+    /** 新建（手动入口 → 自动绑定）；'created' | 'failed' | 'skipped' */
+    create: (projectId: string) => Promise<'created' | 'failed' | 'skipped'>
+    /** 列表变化订阅 */
+    subscribe: (projectId: string, cb: () => void) => () => void
   }
 }
 let splitEnv: SplitEnv | null = null
@@ -3232,6 +3251,84 @@ function WidgetMenu(props: { projectId: string }) {
   )
 }
 
+/** 分栏标题栏「💬 会话」：列本项目会话 + 新建（数据与动作由工作台经 env.projectSessions 注入，引擎不含业务）。
+ *  项目未设文件夹 → 整块不渲染（与 📦 的"无数据不渲染"一致）。 */
+function ProjectSessionsMenu(props: { projectId: string }) {
+  const [model, setModel] = useState<{ rows: ProjectSessionRow[]; orphan: ProjectSessionRow | null } | null>(null)
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const refresh = useCallback(() => {
+    const api = splitEnv?.projectSessions
+    if (!api) { setModel({ rows: [], orphan: null }); return }
+    try { setModel(api.list(props.projectId, T('session.newTitle'))) } catch { setModel({ rows: [], orphan: null }) }
+  }, [props.projectId])
+  useEffect(() => {
+    const api = splitEnv?.projectSessions
+    if (!api || !api.hasFolder(props.projectId)) return
+    refresh()
+    let un: (() => void) | undefined
+    try { un = api.subscribe(props.projectId, refresh) } catch {}
+    return () => { try { un?.() } catch {} }
+  }, [refresh, props.projectId, open])
+  const api = splitEnv?.projectSessions
+  if (!api || !api.hasFolder(props.projectId)) return null
+  const create = async () => {
+    if (busy) return
+    setBusy(true)
+    setFailed(false)
+    try {
+      const r = await api.create(props.projectId)
+      if (r === 'created' || r === 'opened') { setOpen(false); refresh() } else setFailed(true)
+    } catch { setFailed(true) } finally { setBusy(false) }
+  }
+  return (
+    <>
+      <button
+        type="button"
+        className="dsh-wt_widgetBtn"
+        title={T('session.menu')}
+        aria-label={T('session.menu')}
+        aria-expanded={open}
+        onClick={() => { setOpen((v) => !v); refresh() }}
+      >💬</button>
+      {open && (
+        <div className="dsh-wt_widgetPop" role="menu">
+          <div className="dsh-wt_widgetHead">{T('session.title')}</div>
+          {model?.orphan && (
+            <div className="dsh-wt_widgetRow dsh-wt_sessionOrphan">{model.orphan.title}{T('session.current')}</div>
+          )}
+          {(model?.rows ?? []).length === 0 && <div className="dsh-wt_sessionEmpty">{T('session.empty')}</div>}
+          {(model?.rows ?? []).map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              role="menuitem"
+              className="dsh-wt_widgetRow"
+              onClick={() => { try { api.open(props.projectId, r.id) } catch {} ; setOpen(false) }}
+            >
+              <span className="dsh-wt_sessionMark">{r.current ? '✔' : ''}</span>
+              <span className="dsh-wt_widgetName">{r.title}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            role="menuitem"
+            className="dsh-wt_widgetRow dsh-wt_sessionNew"
+            disabled={busy}
+            onClick={() => { void create() }}
+          >
+            <span className="dsh-wt_sessionMark">＋</span>
+            <span className="dsh-wt_widgetName">{busy ? T('session.creating') : T('session.new')}</span>
+          </button>
+          {failed && <div className="dsh-wt_sessionFail">{T('session.fail')}</div>}
+        </div>
+      )}
+    </>
+  )
+}
+
+
 type PoolItem = { spec: LayoutSpec; chatW: number; topH: number; leftW: number; paneWs: number[]; topWs: number[] }
 
 /** 单个工作区渲染层（geom 为 null 时用 0 几何渲染，外层 display:none 保活，保留网页/MD 滚动/激活标签等状态） */
@@ -3349,6 +3446,8 @@ function WorkspaceLayer(props: { spec: LayoutSpec; geom: Geom | null; chatW: num
       <div className="dsh-wt_splitBar" style={{ position: 'fixed', left: g.left, top: barTop, width: hasLeft || chatFull ? contentW : (hasTop ? colW : contentW), zIndex: 70 }}>
         {spec.id !== 'wt-console' && <span className="dsh-wt_splitTitle">{spec.title}</span>}
         <WidgetMenu projectId={spec.id} />
+        {/* 控制室不加会话入口（它的会话入口是绑定弹窗）；未设文件夹的项目由组件自身不渲染 */}
+        {spec.id !== 'wt-console' && <ProjectSessionsMenu projectId={spec.id} />}
         {!hasLeft && (
           <button
             type="button"

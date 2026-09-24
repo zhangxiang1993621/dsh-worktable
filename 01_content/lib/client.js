@@ -8138,6 +8138,11 @@ var css = xterm_default + "\n" + [
   ".dsh-wt_widgetRow:disabled{opacity:.45;cursor:not-allowed}",
   ".dsh-wt_widgetWin{flex:none;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}",
   ".dsh-wt_widgetName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  ".dsh-wt_sessionMark{flex:none;width:12px;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}",
+  ".dsh-wt_sessionOrphan{opacity:.7;cursor:default}",
+  ".dsh-wt_sessionEmpty{padding:6px;color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px}",
+  ".dsh-wt_sessionNew{margin-top:4px;border-top:1px solid var(--dsw-alias-border-l1,#262b36);padding-top:8px}",
+  ".dsh-wt_sessionFail{padding:4px 6px 2px;color:#f07171;font-size:11px}",
   // + 右侧弹出面板
   ".dsh-wt_popBackdrop{position:fixed;left:0;top:0;right:0;bottom:0;z-index:79;background:transparent}",
   // 删除二次确认（fixed 居中模态，压在弹窗之上）
@@ -8645,6 +8650,14 @@ var zh = {
   "widget.list": "\u4EA7\u7269\u6E05\u5355",
   "widget.title": "\u5DF2\u6302\u8F7D\u4EA7\u7269\uFF08\u70B9\u51FB\u91CD\u6302\u5230\u5BF9\u5E94\u7A97\u53E3\uFF09",
   "widget.noPane": "\u5F53\u524D\u5E03\u5C40\u91CC\u6CA1\u6709\u8FD9\u4E2A\u7A97\u53E3",
+  "session.menu": "\u9879\u76EE\u4F1A\u8BDD",
+  "session.title": "\u672C\u9879\u76EE\u4F1A\u8BDD\uFF08\u70B9\u51FB\u5207\u6362\uFF09",
+  "session.empty": "\u8BE5\u9879\u76EE\u8FD8\u6CA1\u6709\u4F1A\u8BDD",
+  "session.current": "\uFF08\u5F53\u524D\uFF09",
+  "session.new": "\u65B0\u5EFA\u4F1A\u8BDD",
+  "session.creating": "\u6B63\u5728\u65B0\u5EFA\u2026",
+  "session.fail": "\u65B0\u5EFA\u5931\u8D25\uFF0C\u53EF\u91CD\u8BD5",
+  "session.newTitle": "\u65B0\u4F1A\u8BDD",
   "annot.label": "\u6807\u6CE8\uFF1A\u70B9\u51FB\u6216\u62D6\u52A8\u7A97\u53E3\u4E2D\u7684\u4F4D\u7F6E\u63D0\u8981\u6C42",
   "annot.hint": "\u70B9\u51FB\u6216\u62D6\u52A8\u6846\u9009\u7A97\u53E3\u4E2D\u7684\u4EFB\u610F\u4F4D\u7F6E\uFF0C\u518D\u8F93\u5165\u4F60\u7684\u8981\u6C42\uFF1B\u8FDE\u7EED\u6807\u6CE8\u4F1A\u4F9D\u6B21\u8FFD\u52A0\u5230\u8F93\u5165\u6846",
   "annot.placeholder": "\u5BF9\u8FD9\u91CC\u63D0\u8981\u6C42\u2026\uFF08Enter \u786E\u8BA4\uFF0CShift+Enter \u6362\u884C\uFF0CEsc \u53D6\u6D88\uFF09",
@@ -8886,6 +8899,14 @@ var en = {
   "widget.list": "Widget list",
   "widget.title": "Mounted widgets (click to remount into its window)",
   "widget.noPane": "This window is not in the current layout",
+  "session.menu": "Project sessions",
+  "session.title": "Project sessions (click to switch)",
+  "session.empty": "No session in this project yet",
+  "session.current": " (current)",
+  "session.new": "New session",
+  "session.creating": "Creating\u2026",
+  "session.fail": "Create failed \u2014 retry",
+  "session.newTitle": "New session",
   "annot.label": "Annotate: click or drag a spot in the window",
   "annot.hint": "Click or drag to select a spot in any window, then type your request; consecutive annotations append to the input.",
   "annot.placeholder": "Describe what to change here\u2026 (Enter to confirm, Shift+Enter newline, Esc cancel)",
@@ -20078,6 +20099,121 @@ function WidgetMenu(props) {
     ] })
   ] });
 }
+function ProjectSessionsMenu(props) {
+  const [model, setModel] = (0, import_react.useState)(null);
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [failed, setFailed] = (0, import_react.useState)(false);
+  const refresh = (0, import_react.useCallback)(() => {
+    const api2 = splitEnv?.projectSessions;
+    if (!api2) {
+      setModel({ rows: [], orphan: null });
+      return;
+    }
+    try {
+      setModel(api2.list(props.projectId, T("session.newTitle")));
+    } catch {
+      setModel({ rows: [], orphan: null });
+    }
+  }, [props.projectId]);
+  (0, import_react.useEffect)(() => {
+    const api2 = splitEnv?.projectSessions;
+    if (!api2 || !api2.hasFolder(props.projectId)) return;
+    refresh();
+    let un;
+    try {
+      un = api2.subscribe(props.projectId, refresh);
+    } catch {
+    }
+    return () => {
+      try {
+        un?.();
+      } catch {
+      }
+    };
+  }, [refresh, props.projectId, open]);
+  const api = splitEnv?.projectSessions;
+  if (!api || !api.hasFolder(props.projectId)) return null;
+  const create = async () => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const r = await api.create(props.projectId);
+      if (r === "created" || r === "opened") {
+        setOpen(false);
+        refresh();
+      } else setFailed(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        className: "dsh-wt_widgetBtn",
+        title: T("session.menu"),
+        "aria-label": T("session.menu"),
+        "aria-expanded": open,
+        onClick: () => {
+          setOpen((v) => !v);
+          refresh();
+        },
+        children: "\u{1F4AC}"
+      }
+    ),
+    open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_widgetPop", role: "menu", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_widgetHead", children: T("session.title") }),
+      model?.orphan && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_widgetRow dsh-wt_sessionOrphan", children: [
+        model.orphan.title,
+        T("session.current")
+      ] }),
+      (model?.rows ?? []).length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_sessionEmpty", children: T("session.empty") }),
+      (model?.rows ?? []).map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "dsh-wt_widgetRow",
+          onClick: () => {
+            try {
+              api.open(props.projectId, r.id);
+            } catch {
+            }
+            ;
+            setOpen(false);
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_sessionMark", children: r.current ? "\u2714" : "" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_widgetName", children: r.title })
+          ]
+        },
+        r.id
+      )),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "dsh-wt_widgetRow dsh-wt_sessionNew",
+          disabled: busy,
+          onClick: () => {
+            void create();
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_sessionMark", children: "\uFF0B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_widgetName", children: busy ? T("session.creating") : T("session.new") })
+          ]
+        }
+      ),
+      failed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_sessionFail", children: T("session.fail") })
+    ] })
+  ] });
+}
 function WorkspaceLayer(props) {
   const g = props.geom ?? { left: 0, top: 0, right: 0, bottom: 0 };
   const spec = props.spec;
@@ -20190,6 +20326,7 @@ function WorkspaceLayer(props) {
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_splitBar", style: { position: "fixed", left: g.left, top: barTop, width: hasLeft || chatFull ? contentW : hasTop ? colW : contentW, zIndex: 70 }, children: [
       spec.id !== "wt-console" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_splitTitle", children: spec.title }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(WidgetMenu, { projectId: spec.id }),
+      spec.id !== "wt-console" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProjectSessionsMenu, { projectId: spec.id }),
       !hasLeft && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
         {
