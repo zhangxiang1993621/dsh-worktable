@@ -59,7 +59,7 @@ node --check lib/index.js
   无 src/、无 .map）→ 独立临时目录 npm install + import() 断言（apply 函数/inject 含 webServer+sessions/name/
   HEALTH_PATH/包内双 bundle 版本）→ **客户端工厂求值门禁**（ModuleLoader 恰好注册一次 + ID 校验 + 精确外部依赖
   白名单 react/react/jsx-runtime + apply/inject 断言）→ **分栏锚点 DOM 回归**（8 场景，评估安装产物 lib/client.js；
-  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 同目录工作区归属对话）→ **窗格恢复回归**（5 场景：关闭留档 / 原样恢复 / 存量救援回填 / 无清单产物候选）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
+  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 同目录工作区归属对话）→ **窗格恢复回归**（5 场景：关闭留档 / 原样恢复 / 存量救援回填 / 无清单产物候选）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
   脚本零 git/gh 动作，发布上传由 gh 手动完成。
   **发布禁止裸 npm pack 或手工 tar 生成发布包**；脚本从仓库任意目录调用均安全（以自身位置解析）。
 - **配套检查入口**：`npm run test:gate` = 工厂门禁 10 个失败/正向用例；
@@ -74,6 +74,9 @@ node --check lib/index.js
   **突变体验证法**：把 loadPkg 兜底的 baseDshHome() 故意改回 resolveDshHomeSafe() 恢复循环，测试必须红）；
   `node 04_test/console-card-actions.test.mjs [lib/client.js 路径]` = 控制室卡片动作 4 场景
   （renameOverride 覆盖语义 / popoverPos 钳制 / collectTabs 顺序与过滤 / migrateTabsInto 迁入与溢出）。
+  `node 04_test/project-sessions.test.mjs [lib/client.js 路径]` = 项目会话联动 6 例
+  （列表过滤（归档/子代理/悬空/去重/trim）/ 弹层模型（占位/打勾/补行）/ 打开决策三分支 / 未载入语义 pin /
+  并发去重与 key 作用域 / 失败静默与 open 抛错静默）。
   `npm run verify:remote -- --expect-sha <release-prep 输出的 SHA> [tag]` = 发布后只读核对
   （远端固定名+版本化双资产文件名/结构/版本/双 SHA 同源且等于本地验收 SHA/安装/导入；
   远端只读，本地仅临时目录）。上传后必须跑 verify:remote 并用 --expect-sha 比对，
@@ -131,6 +134,25 @@ node --check lib/index.js
   自动关项目——createCustomSession/sendCustomToSession 用 markPluginSessionOpen 豁免
   （pluginOpenedSessionsRef），用户要继续在项目里跟新对话沟通；同时 CustomPane 在发送成功后
   调用 autoBind：项目未绑定则自动绑定到新建/选中的会话。
+- **项目会话联动**：切项目时归属对话解析顺序 = 绑定 → 项目文件夹「同目录」第一个可用会话 →
+  （都没有且项目已设文件夹）**兜底自动新建**：宿主有该文件夹的同目录工作区且 `uiWorkspace.connectWorkspace`
+  可用 → `connectWorkspace(wsId)`（宿主语义：复用该工作区空会话/新建，返回 sessionId 且**不切主视图**）；
+  否则回落 `sessions.create({cwd: 项目文件夹})`。两条通道都：`afterSessionCreated`（mark 豁免 + 可选绑定）→
+  `ensureSessionPreset` → `ensureSessionModel`，**都不切主视图**；切换统一由调用方的
+  `applyProjectOpen(io.open)` 完成（先同步 `projectAttachRef.attached` 再切，避免"切换早于 attached"
+  与双重切换）。**兜底自动新建不写绑定**（保持「未绑定 =
+  每次重解析」），并发去重走模块级单例 `projectCreateInFlight`，失败静默为 `'failed'`（不抛给调用方，
+  `io.open` 抛错同样静默）。**不要读 `uiWorkspace.selection` 当"新建会话 id"**：它是宿主私有字段，
+  superseded 时会拿到"当前选择"（0.1.7-rc.1 已踩过：假 created + 抢主视图）。
+  分栏标题栏「💬 会话」（非控制室、项目已设文件夹才渲染）= 本项目会话列表（同目录工作区顺序，跳过归档/
+  子代理/悬空；当前项打勾，未命中时补只读「当前：…」行）+「＋ 新建会话」；点会话 = 切换并豁免
+  「切会话关项目」（markPluginSessionOpen），点新建 = **自动绑定**该项目（分层绑定语义）。
+  数据与动作经 `env.projectSessions`（hasFolder/list/current/open/create/subscribe）注入，引擎不含业务；
+  `subscribe` 仅在弹层打开期间挂到 `consoleListeners`（保活池里的隐藏层不订阅）。纯逻辑
+  `listProjectSessions` / `sessionsMenuModel` / `decideProjectOpen` / `applyProjectOpen` 经
+  `window.__dshWorktable` 导出。回归：`node 04_test/project-sessions.test.mjs`（6 例，已挂 release-prep 5c5）。
+  未载入语义（**pin 住，别改**）：`decideProjectOpen` 对"工作区存在但全未载入"返回 `{action:'open', id: ids[0]}`、
+  绑定到未知 id 仍返回该绑定；菜单侧才按"悬空 = 不显示"过滤。
 - **项目文件夹**：projects.v1.folders = { 项目id → 绝对路径 }；新建项目强制填写（父目录必填，
   文件夹名留空 = 用项目名），保存时走 /api/worktable/mkdir 建目录；绑定面板可改。自定义窗口
   新建会话（未选分组时）用 sessions.create({cwd: 项目文件夹})，提示词携带文件夹与「所有产出
