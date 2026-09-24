@@ -164,8 +164,8 @@ function buildSandbox() {
 
 const { sandbox } = buildSandbox()
 const hooks = sandbox.window.__dshWorktable || {}
-const { listProjectSessions, sessionsMenuModel, decideProjectOpen } = hooks
-for (const [name, fn] of Object.entries({ listProjectSessions, sessionsMenuModel, decideProjectOpen })) {
+const { listProjectSessions, sessionsMenuModel, decideProjectOpen, applyProjectOpen } = hooks
+for (const [name, fn] of Object.entries({ listProjectSessions, sessionsMenuModel, decideProjectOpen, applyProjectOpen })) {
   if (typeof fn !== 'function') fail('export.' + name, 'window.__dshWorktable.' + name + ' 未导出')
 }
 
@@ -249,7 +249,56 @@ const SUB = new Set(['s4'])
   ok('decideProjectOpen')
 }
 
+// 4. applyProjectOpen：none 不动 / open 直切
+{
+  const calls = []
+  const io = { open: (sid) => calls.push(['open', sid]), create: async () => { calls.push(['create']); return 'new1' }, inFlight: new Set() }
+  const r1 = await applyProjectOpen('p1', { action: 'none' }, io)
+  if (r1 !== 'skipped' || calls.length !== 0) fail('apply.none', r1 + ' ' + JSON.stringify(calls))
+  const r2 = await applyProjectOpen('p1', { action: 'open', sessionId: 's9' }, io)
+  if (r2 !== 'opened' || calls.length !== 1 || calls[0][0] !== 'open' || calls[0][1] !== 's9') fail('apply.open', JSON.stringify(calls))
+  ok('applyProjectOpen open/none')
+}
+
+// 5. applyProjectOpen：create 并发同 key 只建一次，建完即切，inFlight 清空（＝兜底自动新建不绑定：io 里没有 bind 能力）
+{
+  const created = []
+  const io = {
+    open: (sid) => created.push(['open', sid]),
+    create: async () => { created.push(['create']); await new Promise((r) => setTimeout(r, 5)); return 'new2' },
+    inFlight: new Set(),
+  }
+  const [a, b] = await Promise.all([
+    applyProjectOpen('p2', { action: 'create' }, io),
+    applyProjectOpen('p2', { action: 'create' }, io),
+  ])
+  if (!((a === 'created' && b === 'skipped') || (a === 'skipped' && b === 'created'))) fail('apply.race', a + '/' + b)
+  if (created.filter((c) => c[0] === 'create').length !== 1) fail('apply.raceCreate', JSON.stringify(created))
+  if (created.filter((c) => c[0] === 'open').length !== 1 || created.at(-1)[1] !== 'new2') fail('apply.raceOpen', JSON.stringify(created))
+  if (io.inFlight.size !== 0) fail('apply.inFlight', '并发结束后 inFlight 未清空')
+  ok('applyProjectOpen create（并发去重）')
+}
+
+// 6. applyProjectOpen：create 抛错 / 返回 null = failed，且永不 open，失败后可重试
+{
+  let n = 0
+  let opened = 0
+  const io = {
+    open: () => { opened++ },
+    create: async () => { n++; if (n === 1) throw new Error('boom'); return null },
+    inFlight: new Set(),
+  }
+  const r1 = await applyProjectOpen('p3', { action: 'create' }, io)
+  if (r1 !== 'failed') fail('apply.failThrow', r1)
+  if (io.inFlight.has('p3')) fail('apply.failClean', '失败后 inFlight 未清理')
+  const r2 = await applyProjectOpen('p3', { action: 'create' }, io)
+  if (r2 !== 'failed') fail('apply.failNull', r2)
+  if (opened !== 0) fail('apply.noOpenOnFail', 'opened=' + opened)
+  if (io.inFlight.size !== 0) fail('apply.failClean2', '失败后 inFlight 未清空')
+  ok('applyProjectOpen 失败路径')
+}
+
 // 计数自检：新增用例块必须同步改 EXPECTED，用例块缺失时测试必须红
-const EXPECTED = 3
+const EXPECTED = 6
 if (pass !== EXPECTED) fail('count', '通过数 ' + pass + ' != 预期 ' + EXPECTED + '（有断言块缺失或被跳过？）')
 console.log('\nproject-sessions: ' + pass + '/' + EXPECTED + ' passed')

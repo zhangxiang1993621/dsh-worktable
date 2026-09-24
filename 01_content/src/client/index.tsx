@@ -863,6 +863,35 @@ export function decideProjectOpen(input: {
   return { action: 'create' }
 }
 
+/** 打开项目的联动执行器（依赖注入，便于回归）：
+ *  - open：直接切（切到已有会话，不绑定）；
+ *  - create：同项目并发去重后建会话再切（**不绑定**——兜底自动新建保持"未绑定 = 每次重解析"语义）；
+ *  - none：不动；
+ *  任何失败静默为 'failed'（不抛异常，不影响布局已经打开这件事）。 */
+export async function applyProjectOpen(
+  projectId: string,
+  decision: ProjectOpenDecision,
+  io: { open: (sessionId: string) => void; create: () => Promise<string | null>; inFlight: Set<string> },
+): Promise<'opened' | 'created' | 'skipped' | 'failed'> {
+  if (decision.action === 'none') return 'skipped'
+  if (decision.action === 'open') {
+    io.open(decision.sessionId)
+    return 'opened'
+  }
+  if (io.inFlight.has(projectId)) return 'skipped'
+  io.inFlight.add(projectId)
+  try {
+    const sid = await io.create()
+    if (!sid) return 'failed'
+    io.open(sid)
+    return 'created'
+  } catch {
+    return 'failed'
+  } finally {
+    io.inFlight.delete(projectId)
+  }
+}
+
 /** 会话分组列表（模块级，供自定义窗会话选择与对话绑定弹窗共用） */
 async function fetchSessionGroups(): Promise<{ groups: { title: string; sessions: { id: string; title: string; isCurrent: boolean }[] }[]; current: string }> {
   try {
@@ -3857,5 +3886,6 @@ try {
     listProjectSessions,
     sessionsMenuModel,
     decideProjectOpen,
+    applyProjectOpen,
   }
 } catch {}

@@ -7537,6 +7537,7 @@ var index_exports = {};
 __export(index_exports, {
   WorktableSection: () => WorktableSection,
   apply: () => apply,
+  applyProjectOpen: () => applyProjectOpen,
   createCustomSession: () => createCustomSession,
   decideProjectOpen: () => decideProjectOpen,
   htmlProductCandidates: () => htmlProductCandidates,
@@ -21194,6 +21195,25 @@ function decideProjectOpen(input) {
   if (!folder || !input.canCreate) return { action: "none" };
   return { action: "create" };
 }
+async function applyProjectOpen(projectId, decision, io) {
+  if (decision.action === "none") return "skipped";
+  if (decision.action === "open") {
+    io.open(decision.sessionId);
+    return "opened";
+  }
+  if (io.inFlight.has(projectId)) return "skipped";
+  io.inFlight.add(projectId);
+  try {
+    const sid = await io.create();
+    if (!sid) return "failed";
+    io.open(sid);
+    return "created";
+  } catch {
+    return "failed";
+  } finally {
+    io.inFlight.delete(projectId);
+  }
+}
 async function fetchSessionGroups() {
   try {
     const snap = sessionBridge?.list?.getSnapshot?.();
@@ -24263,7 +24283,8 @@ try {
     ...w.__dshWorktable ?? {},
     listProjectSessions,
     sessionsMenuModel,
-    decideProjectOpen
+    decideProjectOpen,
+    applyProjectOpen
   };
 } catch {
 }
