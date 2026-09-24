@@ -21401,7 +21401,6 @@ async function createProjectSession(projectId, folder, bind) {
       afterSessionCreated(projectId, sid, bind);
       await ensureSessionPreset(sid);
       await ensureSessionModel(sid);
-      openMainSession(sid);
       return sid;
     } catch {
     }
@@ -21413,10 +21412,9 @@ async function createProjectSession(projectId, folder, bind) {
     const createOpts = folder ? { cwd: folder } : {};
     const sid = await b.sessions.create(createOpts);
     if (!sid) return null;
+    afterSessionCreated(projectId, sid, bind);
     await ensureSessionPreset(sid);
     await ensureSessionModel(sid);
-    afterSessionCreated(projectId, sid, bind);
-    openMainSession(sid);
     return sid;
   } catch {
     return null;

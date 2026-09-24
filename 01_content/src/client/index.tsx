@@ -914,8 +914,12 @@ function afterSessionCreated(projectId: string, sessionId: string, bind: boolean
 }
 
 /** 新建项目会话（方案 1）：
- *  ① 项目文件夹已有同目录工作区且宿主支持 → uiWorkspace.openWorkspace(wsId, beforeOpen)（宿主自己复用空会话/新建）；
- *  ② 否则回落 sessions.create({ cwd: 文件夹 }) + 预设/模型修复 + 切主视图（老宿主与无工作区都走这条）。
+ *  ① 项目文件夹已有同目录工作区且宿主支持 → uiWorkspace.connectWorkspace(wsId)（宿主语义：复用该工作区空会话/新建，
+ *     返回 sessionId 且**不切主视图**，便于切换前先写绑定/豁免）；
+ *  ② 否则回落 sessions.create({ cwd: 文件夹 })（老宿主与无工作区都走这条）。
+ *  两条通道都：afterSessionCreated（mark 豁免 + 可选绑定）→ ensureSessionPreset → ensureSessionModel，
+ *  **都不切主视图**；切换统一由调用方的 applyProjectOpen(io.open) 完成（先同步 projectAttachRef.attached 再切），
+ *  避免"切换早于 attached"以及双重切换。
  *  返回新会话 id；任何失败返回 null（静默，调用方只提示不抛）。 */
 async function createProjectSession(projectId: string, folder: string | null, bind: boolean): Promise<string | null> {
   const uw = (() => { try { return clientCtx?.get?.('uiWorkspace') ?? null } catch { return null } })()
@@ -936,7 +940,6 @@ async function createProjectSession(projectId: string, folder: string | null, bi
       // 正是仓库已记录的 model-unavailable 症状来源，故显式补齐（与 cwd 分支一致）
       await ensureSessionPreset(sid)
       await ensureSessionModel(sid)
-      openMainSession(sid)
       return sid
     } catch { /* 宿主建会话失败 → 交给调用方提示，不再回落第二个通道（避免建出两个会话） */ }
     return null
@@ -947,10 +950,9 @@ async function createProjectSession(projectId: string, folder: string | null, bi
     const createOpts: any = folder ? { cwd: folder } : {}
     const sid = await b.sessions.create(createOpts)
     if (!sid) return null
+    afterSessionCreated(projectId, sid, bind)
     await ensureSessionPreset(sid)
     await ensureSessionModel(sid)
-    afterSessionCreated(projectId, sid, bind)
-    openMainSession(sid)
     return sid
   } catch {
     return null

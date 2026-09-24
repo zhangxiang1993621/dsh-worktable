@@ -3254,7 +3254,7 @@ function WidgetMenu(props: { projectId: string }) {
 /** 分栏标题栏「💬 会话」：列本项目会话 + 新建（数据与动作由工作台经 env.projectSessions 注入，引擎不含业务）。
  *  项目未设文件夹 → 整块不渲染（与 📦 的"无数据不渲染"一致）。 */
 function ProjectSessionsMenu(props: { projectId: string }) {
-  const [model, setModel] = useState<{ rows: ProjectSessionRow[]; orphan: ProjectSessionRow | null } | null>(null)
+  const [model, setModel] = useState<{ rows: ProjectSessionRow[]; orphan: { id: string; title: string } | null } | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
