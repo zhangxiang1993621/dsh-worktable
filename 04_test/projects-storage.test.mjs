@@ -139,8 +139,8 @@ function buildSandbox() {
 
 const { sandbox } = buildSandbox()
 const hooks = sandbox.window.__dshWorktable || {}
-const { planProjectsLoad, projectsBackupWrite, projectsBackupHeal, planBackupAdoption, parseBackupEnvelope, pushBackup, fetchBackup } = hooks
-for (const [name, fn] of Object.entries({ planProjectsLoad, projectsBackupWrite, projectsBackupHeal, planBackupAdoption, parseBackupEnvelope, pushBackup, fetchBackup })) {
+const { planProjectsLoad, projectsBackupWrite, projectsBackupHeal, planBackupAdoption, parseBackupEnvelope, planDiskPush, pushBackup, fetchBackup } = hooks
+for (const [name, fn] of Object.entries({ planProjectsLoad, projectsBackupWrite, projectsBackupHeal, planBackupAdoption, parseBackupEnvelope, planDiskPush, pushBackup, fetchBackup })) {
   if (typeof fn !== 'function') fail('export.' + name, 'window.__dshWorktable.' + name + ' 未导出')
 }
 
@@ -315,7 +315,19 @@ const realProjects = () => JSON.stringify({
   ok('备份传输契约（POST 形状 / GET 解析 / 非 200 与抛错静默）')
 }
 
+// 10. planDiskPush：什么时候允许把状态推上磁盘（2026-10-14 灾难演练抓到的缺陷：
+//     主键缺失时启动自愈会 persist 一次**默认空档**，若推上去就成了"最新一份"，
+//     把旧的有料副本顶掉 → 本地为空时反而救不回来。故空档只在"来源权威"时才推）
+{
+  if (planDiskPush('default', 0) !== false) fail('push.defaultEmpty', '默认空档（主键缺失启动）不得推盘')
+  if (planDiskPush('default', 3) !== true) fail('push.defaultRich', '默认来源但已有项目 → 可推')
+  if (planDiskPush('primary', 0) !== true) fail('push.primaryEmpty', '权威来源的空档（用户主动删光）→ 必须推，否则会复活已删项目')
+  if (planDiskPush('backup', 0) !== true) fail('push.backupEmpty', '从备份救回后的空档同样属权威来源 → 可推')
+  if (planDiskPush('primary', 3) !== true) fail('push.primaryRich', '权威来源有料 → 可推')
+  ok('planDiskPush')
+}
+
 // 计数自检：新增用例块必须同步改 EXPECTED，用例块缺失时测试必须红
-const EXPECTED = 9
+const EXPECTED = 10
 if (pass !== EXPECTED) fail('count', '通过数 ' + pass + ' != 预期 ' + EXPECTED + '（有断言块缺失或被跳过？）')
 console.log('\nprojects-storage: ' + pass + '/' + EXPECTED + ' passed')

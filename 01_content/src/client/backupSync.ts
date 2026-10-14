@@ -54,6 +54,19 @@ export function parseBackupEnvelope(input: unknown): BackupEnvelope | null {
   return { layouts: parsed.layouts.length, data: o.data, savedAt: o.savedAt }
 }
 
+/**
+ * 这次 persist 该不该推磁盘。
+ * **空档只有来源权威时才推**：主键缺失时的"默认空档"（source='default'）是启动自愈的产物，
+ * 推上去会变成"最新一份"、把磁盘里那份有料的顶掉，反而让下一次启动救不回来（2026-10-14 演练实测）。
+ * 反之，用户主动删光项目时来源是 primary（权威）→ 空档必须推，否则下次加载会把已删项目复活。
+ * @param source - 本次载入的来源（'primary' | 'backup' | 'default'）
+ * @param layouts - 当前布局数
+ */
+export function planDiskPush(source: string, layouts: number): boolean {
+  if (typeof layouts === 'number' && layouts > 0) return true
+  return source !== 'default'
+}
+
 /** 取磁盘最新副本（网络/解析失败一律 null，不打扰调用方） */
 export async function fetchBackup(): Promise<BackupEnvelope | null> {
   try {

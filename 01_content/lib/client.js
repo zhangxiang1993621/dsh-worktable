@@ -20440,6 +20440,10 @@ function parseBackupEnvelope(input) {
   if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.layouts)) return null;
   return { layouts: parsed.layouts.length, data: o.data, savedAt: o.savedAt };
 }
+function planDiskPush(source, layouts) {
+  if (typeof layouts === "number" && layouts > 0) return true;
+  return source !== "default";
+}
 async function fetchBackup() {
   try {
     const res = await fetch(BACKUP_PATH + "?name=" + encodeURIComponent(BACKUP_NAME), { cache: "no-store" });
@@ -22578,7 +22582,8 @@ function WorktableSection(props) {
         if (backup !== null) localStorage.setItem(PROJECTS_BAK_KEY, backup);
         const text2 = JSON.stringify(next);
         localStorage.setItem(PROJECTS_KEY, text2);
-        queueDiskBackup(text2);
+        const loadPlan = projectsLoadRef.current;
+        if (planDiskPush(loadPlan ? loadPlan.source : "primary", next.layouts.length)) queueDiskBackup(text2);
       } catch {
       }
       return next;
@@ -22624,6 +22629,7 @@ function WorktableSection(props) {
         localStorage.setItem(PROJECTS_BAK_KEY, remote.data);
         localStorage.setItem(PROJECTS_KEY, remote.data);
         diskBackupLastSent = remote.data;
+        projectsLoadRef.current = { state: restored, source: "primary", restoredFromBackup: true, writable: true };
         setProjects(restored);
         setRecoverNotice(true);
         console.warn("[worktable] \u672C\u5730\u9879\u76EE\u5B58\u6863\u4E3A\u7A7A\uFF08\u6E90\u7EA7\u6E05\u7A7A\uFF1F\uFF09\uFF0C\u5DF2\u4ECE\u78C1\u76D8\u5907\u4EFD\u6062\u590D " + restored.layouts.length + " \u4E2A\u9879\u76EE\uFF08\u5199\u5165\u4E8E " + new Date(remote.savedAt).toLocaleString() + "\uFF09");
@@ -24667,6 +24673,7 @@ try {
     projectsBackupHeal,
     planBackupAdoption,
     parseBackupEnvelope,
+    planDiskPush,
     pushBackup,
     fetchBackup,
     openMainSession,

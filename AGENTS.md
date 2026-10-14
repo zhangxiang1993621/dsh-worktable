@@ -57,7 +57,7 @@ node --check lib/index.js
   无 src/、无 .map）→ 独立临时目录 npm install + import() 断言（apply 函数/inject 含 webServer+sessions/name/
   HEALTH_PATH/包内双 bundle 版本）→ **客户端工厂求值门禁**（ModuleLoader 恰好注册一次 + ID 校验 + 精确外部依赖
   白名单 react/react/jsx-runtime + apply/inject 断言）→ **分栏锚点 DOM 回归**（8 场景，评估安装产物 lib/client.js；
-  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 两通道优先级 / 无通道静默 / pickProjectSession 四判）→ **窗格恢复回归**（3 场景：关闭留档 / 原样恢复 + 未命中无操作 / 活通道闭环）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **项目存档防丢失回归**（9 例：主键正常 / 主键缺失→备份恢复 / 主键损坏可救与只读 / 真·新装 / 备份写入决策 / 备份自愈 / 磁盘副本采纳判定 / 备份响应解析 / 备份传输契约；评估安装产物 lib/client.js）→ **磁盘备份路由回归**（3 组场景：落盘+取最新 / 轮转 5 份 / 路径围栏与入参校验；评估安装产物 lib/index.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
+  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 两通道优先级 / 无通道静默 / pickProjectSession 四判）→ **窗格恢复回归**（3 场景：关闭留档 / 原样恢复 + 未命中无操作 / 活通道闭环）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **项目存档防丢失回归**（10 例：主键正常 / 主键缺失→备份恢复 / 主键损坏可救与只读 / 真·新装 / 备份写入决策 / 备份自愈 / 磁盘副本采纳判定 / 备份响应解析 / 备份传输契约 / 磁盘推送门控；评估安装产物 lib/client.js）→ **磁盘备份路由回归**（3 组场景：落盘+取最新 / 轮转 5 份 / 路径围栏与入参校验；评估安装产物 lib/index.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
   脚本零 git/gh 动作，发布上传由 gh 手动完成。
   **发布禁止裸 npm pack 或手工 tar 生成发布包**；脚本从仓库任意目录调用均安全（以自身位置解析）。
 - **配套检查入口**：`npm run test:gate` = 工厂门禁 10 个失败/正向用例；
@@ -75,9 +75,10 @@ node --check lib/index.js
   `node 04_test/project-sessions.test.mjs [lib/client.js 路径]` = 项目会话联动 6 例
   （列表过滤（归档/子代理/悬空/去重/trim）/ 弹层模型（占位/打勾/补行）/ 打开决策三分支 / 未载入语义 pin /
   并发去重与 key 作用域 / 失败静默与 open 抛错静默）。
-  `node 04_test/projects-storage.test.mjs [lib/client.js 路径]` = 项目存档防丢失 9 例
+  `node 04_test/projects-storage.test.mjs [lib/client.js 路径]` = 项目存档防丢失 10 例
   （主键正常 / 主键缺失→备份恢复 / 主键损坏（可救 & 只读）/ 真·新装 / 备份写入决策 / 备份自愈 /
-  磁盘副本采纳判定 planBackupAdoption / 备份响应解析 parseBackupEnvelope / 备份传输契约（桩 fetch））。
+  磁盘副本采纳判定 planBackupAdoption / 备份响应解析 parseBackupEnvelope / 备份传输契约（桩 fetch）/
+  磁盘推送门控 planDiskPush）。
   `node 04_test/server-backup-route.test.mjs [lib/index.js 路径]` = 磁盘备份路由 3 组场景（子进程隔离 DSH_HOME；
   落盘 + 取最新 / 轮转只留 5 份（同毫秒写入不互相覆盖）/ 路径围栏（../ 与 / → 400 不落盘）+ 入参校验（非 JSON 400、超长 413、缺字段 400）+ 无副本返回 data:null）。
   `npm run verify:remote -- --expect-sha <release-prep 输出的 SHA> [tag]` = 发布后只读核对
@@ -92,7 +93,7 @@ node --check lib/index.js
 | 控制室 UI、预设/模型、提醒、产物握手、更新状态 | `02_process/PRD.md` §14（修改对应组件时对照源码，不以历史 API 示例替代新旧桥接） |
 
 - **Desktop 兼容边界**：0.4.0 保留客户端 platform=web（Desktop 0.2.0-rc.2 也按此契约加载）。终端 WebSocket 经 `hostTransport.ts` 使用宿主 `__DSH_TRANSPORT__.streamBaseUrl`，不能由 dsh-app://app 拼 ws://app；更新提示须指向 desktop profile 与桌面端自带 CLI，不能修改 web profile。页面点测与源码回归不能替代完整桌面端业务验收，不宣称桌面全功能兼容。
-- **0.3.4 网页端兼容**：声明已测版本 0.1.1-rc.2 / 0.1.2-rc.1 / 0.2.0-rc.2，不外推 Desktop 或未测宿主。当前会话走 `currentSessionOf`（旧 current / 新 mainView），导航走 `openHostSession`（新 uiWorkspace / 旧 sessions.open），标注走 `appendHostInput`。Cordis 可选服务用 `ctx.get` 探测；返回 undefined 后不得再访问未 inject 的同名属性。旧 current 契约的引用坐标是显示文本位置，新 mainView 契约按单字符 chip 投影；不得因旧版也有 input.for 就误用新版坐标。`npm run test:input` 为 15 项定向回归。
+- **0.3.4 网页端兼容**：声明已测版本 0.1.1-rc.2 / 0.1.2-rc.1 / 0.2.0-rc.2 / **0.2.1-alpha.2**（2026-10-14 实测：插件在 0.2.1-alpha.2 宿主上完整加载、侧栏 4 张项目卡渲染、宿主路由 200、磁盘备份写入/读回/灾难演练恢复闭环；**仅此范围，不等于全功能验收**），不外推 Desktop 或未测宿主。当前会话走 `currentSessionOf`（旧 current / 新 mainView），导航走 `openHostSession`（新 uiWorkspace / 旧 sessions.open），标注走 `appendHostInput`。Cordis 可选服务用 `ctx.get` 探测；返回 undefined 后不得再访问未 inject 的同名属性。旧 current 契约的引用坐标是显示文本位置，新 mainView 契约按单字符 chip 投影；不得因旧版也有 input.for 就误用新版坐标。`npm run test:input` 为 15 项定向回归。
 - **0.2 会话状态/发送**：可选订阅 `uiSession.sessionStatus`，只读归一化列表与 subagentCatalog；completionUnread 不是任务成功证明，打开主会话会清除。已观察到的 running→false 供原产物握手使用，下一轮 running 清除；停止不等于成功。新会话发送通过 `sessions.using` 临时持有，等待 ready 后发送并由宿主释放；业务拒绝/超时不得再换通道重发。`npm run test:session` 为 20 项回归；0.2.0-rc.2 已实测短文本发送/回复，真实待决/子代理仍未验收。
 - **0.2 新建/预览/选择接口**：`createHostSession` 必须区分显式未分组（第四参数 `none`）与隐式默认（`auto`）。自定义窗口显式未分组仅传 cwd（无目录则空选项），禁止注册/复用工作区或 initializeDefault；新版控制室空未分组会话输入区禁用，必须提示并阻止创建，由用户选组/加入可用现有会话，不偷偷改组、不发激活消息。现有分组未选 ID 同样拒绝；显式现有/新建组才传 workspaceId。分组列表晚返回不得覆盖用户已选分组。隐式默认保留此前工作区兜底，旧宿主保留原分支，不移动既有会话。预览读临时持有的 eventSource，模型目录在持有期间使用，结束即释放；预设接 remote.agentPresets。`npm run test:details` 为 30 项回归，含两处真实调用接线与延迟默认分组；不能替代真实输入区/模型会话验收。
 
@@ -172,7 +173,7 @@ node --check lib/index.js
   ④ 备份自愈（`projectsBackupHeal`）：挂载时若「主键有料（layouts>0）而备份缺失/空档/损坏」，
   立即把主键补进备份 —— 覆盖「手工把存档恢复回主键后，备份仍停在空档」这种情形，
   否则下一次清空只会从空备份「恢复」出空工作台；主键本身是空档时不补（不把空工作台固化）。
-  回归：`node 04_test/projects-storage.test.mjs`（9 例，已挂 release-prep 5c6；磁盘副本 3 例随 5c7 一并跑）；
+  回归：`node 04_test/projects-storage.test.mjs`（10 例，已挂 release-prep 5c6；磁盘副本 4 例随 5c7 一并跑）；
   突变实证：把 `planProjectsLoad` 损坏分支的 `writable` 改成 `true`，测试必须翻红。
 - **磁盘备份（2026-10-14 根治，红线）**：**同源备份救不了源级清空**——`projects.v1` 与 `.bak` 同在
   127.0.0.1:3080 这一个源里，一次「清除浏览数据」会把两者一起删掉（2026-10-14 实测：主键与 .bak 双双成空档，
@@ -181,12 +182,14 @@ node --check lib/index.js
   `<DSH_HOME>/worktable-backup/<name>/<savedAt>-<rand>.json`，**保留最近 5 份**；name 只允许
   `[A-Za-z0-9._-]{1,80}`（防路径穿越）、body 上限 1MB（超限 413）、data 必须是 JSON 对象（否则 400）；
   ② 客户端（`src/client/backupSync.ts`）在 persist 后**防抖 2.5s 推送**（同内容去重、失败静默，不影响本地落盘）；
+  **推送门控 `planDiskPush`：空档只有来源权威（primary/backup）时才推** —— 主键缺失时启动自愈会 persist 一次
+  默认空档，若推上去就成了"最新一份"、把有料副本顶掉（2026-10-14 演练实测），故 source='default' 的空档一律不推；
+  用户主动删光项目时来源是 primary → 空档照推，下次不会被复活；
   ③ 载入时 `planBackupAdoption` 判定：**只有本地比磁盘副本更空（remote.layouts > local.layouts）才采纳**，
-  采纳后写回主键 + `.bak` 并复用 `recover.notice` 提示；远端为空/缺失/更少一律不动 —— 因此「用户主动删光项目」
-  （磁盘副本也会被推成空档 → 空对空不采纳）不会被复活，而源级清空（本地空、磁盘有料）能自动救回；
+  采纳后写回主键 + `.bak`、把本会话来源改记为权威、复用 `recover.notice` 提示；远端为空/缺失/更少一律不动；
   ④ 只备份 `projects.v1` 这一层（项目 + 布局 + 文件夹 + 绑定），不备份 split.v2/view.v1（纯视图几何）。
-  回归：`node 04_test/server-backup-route.test.mjs`（3 组场景，已挂 release-prep 5c7）；**宿主半新增路由，
-  生效需重启 dsh web**。
+  回归：`node 04_test/server-backup-route.test.mjs`（3 组场景，已挂 release-prep 5c7）+ projects-storage 第 7-10 例；
+  **宿主半新增路由，生效需重启 dsh web**。
 - **项目文件夹**：projects.v1.folders = { 项目id → 绝对路径 }；新建项目强制填写（父目录必填，
   文件夹名留空 = 用项目名），保存时走 /api/worktable/mkdir 建目录；绑定面板可改。自定义窗口
   新建会话（未选分组时）用 sessions.create({cwd: 项目文件夹})，提示词携带文件夹与「所有产出

@@ -4,7 +4,7 @@ import { NS, zh, en, type WorktableKey } from './locales'
 import { isAbs, joinPath, parentPathOf, basenameOf } from './pathutil'
 import { splitStore, SplitWorkspace, setSplitT, setSplitEnv, type LayoutSpec, type SplitPane, type ConsoleCardData } from './split'
 import { renameOverride, popoverPos, collectTabs, migrateTabsInto } from './consoleEdit'
-import { fetchBackup, parseBackupEnvelope, planBackupAdoption, pushBackup } from './backupSync'
+import { fetchBackup, parseBackupEnvelope, planBackupAdoption, planDiskPush, pushBackup } from './backupSync'
 import { appendHostInput } from './hostInput'
 import { worktableUpgrade } from './hostTransport'
 import { WidgetMountRegistry, newWidgetId, widgetManifestPath, type WidgetBinding } from './widgetMount'
@@ -1828,8 +1828,10 @@ function WorktableSection(props: any) {
         if (backup !== null) localStorage.setItem(PROJECTS_BAK_KEY, backup)
         const text = JSON.stringify(next)
         localStorage.setItem(PROJECTS_KEY, text)
-        // 再推一份到磁盘：同源清空会把主键与 .bak 一起删掉，磁盘副本是最后一道防线
-        queueDiskBackup(text)
+        // 再推一份到磁盘：同源清空会把主键与 .bak 一起删掉，磁盘副本是最后一道防线。
+        // 但「主键缺失导致的默认空档」绝不能推——它会把磁盘里那份有料的顶掉（planDiskPush）。
+        const loadPlan = projectsLoadRef.current
+        if (planDiskPush(loadPlan ? loadPlan.source : 'primary', next.layouts.length)) queueDiskBackup(text)
       } catch {}
       return next
     })
@@ -1883,6 +1885,8 @@ function WorktableSection(props: any) {
         localStorage.setItem(PROJECTS_BAK_KEY, remote.data)
         localStorage.setItem(PROJECTS_KEY, remote.data)
         diskBackupLastSent = remote.data
+        // 采纳后本会话的来源变成权威：后续 persist 允许推盘（含用户主动删光的空档）
+        projectsLoadRef.current = { state: restored, source: 'primary', restoredFromBackup: true, writable: true }
         setProjects(restored)
         setRecoverNotice(true)
         console.warn('[worktable] 本地项目存档为空（源级清空？），已从磁盘备份恢复 ' + restored.layouts.length + ' 个项目（写入于 ' + new Date(remote.savedAt).toLocaleString() + '）')
@@ -3828,6 +3832,7 @@ try {
     projectsBackupHeal,
     planBackupAdoption,
     parseBackupEnvelope,
+    planDiskPush,
     pushBackup,
     fetchBackup,
     openMainSession,
