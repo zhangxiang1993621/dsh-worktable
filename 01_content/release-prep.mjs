@@ -245,6 +245,20 @@ if (sessionRun.status !== 0) {
 }
 console.log('[release-prep] project session tests passed (6 examples, on installed artifact)')
 
+// ---------- 5c6. 项目存档防丢失回归（备份值 / 主键缺失→备份恢复 / 损坏→只读不回写） ----------
+const storageTest = join(HERE, '..', '04_test', 'projects-storage.test.mjs')
+if (!existsSync(storageTest)) {
+  console.error('[release-prep] FAIL: projects-storage.test.mjs missing')
+  process.exit(1)
+}
+const storageRun = spawnSync(process.execPath, [storageTest, join(inst, 'node_modules', 'dsh-worktable', 'lib', 'client.js')], { cwd: HERE, stdio: 'pipe', encoding: 'utf8' })
+if (storageRun.status !== 0) {
+  console.error('[release-prep] FAIL: projects-storage.test.mjs')
+  console.error(storageRun.stderr || storageRun.stdout)
+  process.exit(1)
+}
+console.log('[release-prep] projects storage tests passed (6 examples, on installed artifact)')
+
 // ---------- 5d. 服务端数据目录解析回归（loadPkg ↔ resolveDshHomeSafe 循环调用修复） ----------
 // 评估「安装目录中的最终产物」lib/index.js；官方路径 / 包不可解析兜底 / ~ 与相对路径展开
 const serverHomeTest = join(HERE, '..', '04_test', 'server-home.test.mjs')

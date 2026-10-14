@@ -84,6 +84,11 @@ export const css = xtermCss + '\n' + [
   '.dsh-wt_projects{display:flex;flex-direction:column;gap:4px}',
   '.dsh-wt_projects[data-managing=true]{opacity:.55;pointer-events:none}',
   '.dsh-wt_empty{padding:8px 10px;border:1px dashed var(--dsw-alias-border-l1,#262b36);border-radius:8px;color:var(--dsw-alias-label-tertiary,#6e7683);font-size:11px;text-align:center}',
+  // 存档被清空后「已从备份恢复」的一行提示（可关闭；数据事件必须可见）
+  '.dsh-wt_recover{display:flex;align-items:center;gap:8px;margin:0 0 6px;padding:6px 8px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#3a4150);border-radius:8px;background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px;line-height:1.4}',
+  '.dsh-wt_recoverText{flex:1;min-width:0}',
+  '.dsh-wt_recoverBtn{flex:none;padding:2px 6px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary,#e6e8eb);font-size:11px;cursor:pointer}',
+  '.dsh-wt_recoverBtn:hover{background:var(--dsw-alias-fill-l2,rgba(255,255,255,.1))}',
   // 分栏工作区（M1 通用引擎）
   '.dsh-wt_splitBar{display:flex;align-items:center;gap:10px;height:26px;padding:0 10px;box-sizing:border-box;border-bottom:1px solid var(--dsw-alias-border-l1,#262b36);background:var(--dsw-alias-bg-base,#0b0e14)}',
   '.dsh-wt_splitTitle{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary,#e6e8eb);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',

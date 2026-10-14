@@ -7545,6 +7545,9 @@ __export(index_exports, {
   listProjectSessions: () => listProjectSessions,
   normProjectFolder: () => normProjectFolder,
   pickProjectSession: () => pickProjectSession,
+  planProjectsLoad: () => planProjectsLoad,
+  projectsBackupHeal: () => projectsBackupHeal,
+  projectsBackupWrite: () => projectsBackupWrite,
   sendCustomToSession: () => sendCustomToSession,
   sessionsMenuModel: () => sessionsMenuModel
 });
@@ -7845,6 +7848,11 @@ var css = xterm_default + "\n" + [
   ".dsh-wt_projects{display:flex;flex-direction:column;gap:4px}",
   ".dsh-wt_projects[data-managing=true]{opacity:.55;pointer-events:none}",
   ".dsh-wt_empty{padding:8px 10px;border:1px dashed var(--dsw-alias-border-l1,#262b36);border-radius:8px;color:var(--dsw-alias-label-tertiary,#6e7683);font-size:11px;text-align:center}",
+  // 存档被清空后「已从备份恢复」的一行提示（可关闭；数据事件必须可见）
+  ".dsh-wt_recover{display:flex;align-items:center;gap:8px;margin:0 0 6px;padding:6px 8px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#3a4150);border-radius:8px;background:var(--dsw-alias-fill-l1,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#9aa4b2);font-size:11px;line-height:1.4}",
+  ".dsh-wt_recoverText{flex:1;min-width:0}",
+  ".dsh-wt_recoverBtn{flex:none;padding:2px 6px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary,#e6e8eb);font-size:11px;cursor:pointer}",
+  ".dsh-wt_recoverBtn:hover{background:var(--dsw-alias-fill-l2,rgba(255,255,255,.1))}",
   // 分栏工作区（M1 通用引擎）
   ".dsh-wt_splitBar{display:flex;align-items:center;gap:10px;height:26px;padding:0 10px;box-sizing:border-box;border-bottom:1px solid var(--dsw-alias-border-l1,#262b36);background:var(--dsw-alias-bg-base,#0b0e14)}",
   ".dsh-wt_splitTitle{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary,#e6e8eb);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
@@ -8685,6 +8693,8 @@ var zh = {
   "icons.title": "\u9009\u62E9\u56FE\u6807",
   "icons.change": "\u66F4\u6362\u56FE\u6807",
   "empty": "\u6682\u65E0\u9879\u76EE",
+  "recover.notice": "\u9879\u76EE\u5B58\u6863\u88AB\u6E05\u7A7A\uFF0C\u5DF2\u4ECE\u5907\u4EFD\u6062\u590D {n} \u4E2A\u9879\u76EE",
+  "recover.dismiss": "\u77E5\u9053\u4E86",
   "update.badgeTitle": "\u6709\u65B0\u7248\u672C\u53EF\u7528",
   "update.available": "\u65B0\u7248\u672C\u53EF\u7528",
   "update.current": "\u5F53\u524D\u7248\u672C",
@@ -8934,6 +8944,8 @@ var en = {
   "icons.title": "Pick an icon",
   "icons.change": "Change icon",
   "empty": "No projects yet",
+  "recover.notice": "Project archive was wiped; restored {n} project(s) from backup",
+  "recover.dismiss": "Got it",
   "update.badgeTitle": "New version available",
   "update.available": "New version available",
   "update.current": "Current version",
@@ -20682,6 +20694,7 @@ async function copyText(text2) {
 }
 var PERSIST_KEY2 = "dsh.worktable.view.v1";
 var PROJECTS_KEY = "dsh.worktable.projects.v1";
+var PROJECTS_BAK_KEY = "dsh.worktable.projects.v1.bak";
 var MIN_TOP = 56;
 var SNAP_PX = 32;
 var LEGACY_BUMP_COOLDOWN = 15e3;
@@ -20895,27 +20908,52 @@ function loadView() {
     return { ...DEFAULT_VIEW };
   }
 }
-function loadProjects() {
+function normalizeProjects(p) {
+  return {
+    order: Array.isArray(p.order) ? p.order.filter((x) => typeof x === "string") : [],
+    lastUsed: p.lastUsed && typeof p.lastUsed === "object" ? p.lastUsed : {},
+    hidden: Array.isArray(p.hidden) ? p.hidden.filter((x) => typeof x === "string") : [],
+    nameOverrides: p.nameOverrides && typeof p.nameOverrides === "object" ? p.nameOverrides : {},
+    iconOverrides: p.iconOverrides && typeof p.iconOverrides === "object" ? p.iconOverrides : {},
+    removed: Array.isArray(p.removed) ? p.removed.filter((x) => typeof x === "string") : [],
+    views: p.views && typeof p.views === "object" ? p.views : {},
+    shortcuts: Array.isArray(p.shortcuts) ? p.shortcuts.filter((s) => s && typeof s.id === "string" && typeof s.name === "string" && typeof s.href === "string") : [],
+    layouts: Array.isArray(p.layouts) ? p.layouts.filter((l) => l && typeof l.id === "string" && typeof l.title === "string" && Array.isArray(l.main)) : [],
+    bindings: p.bindings && typeof p.bindings === "object" ? p.bindings : {},
+    folders: p.folders && typeof p.folders === "object" ? p.folders : {}
+  };
+}
+function parseProjectsRaw(raw) {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  let p;
   try {
-    const raw = localStorage.getItem(PROJECTS_KEY);
-    if (!raw) return { ...DEFAULT_PROJECTS };
-    const p = JSON.parse(raw);
-    return {
-      order: Array.isArray(p.order) ? p.order.filter((x) => typeof x === "string") : [],
-      lastUsed: p.lastUsed && typeof p.lastUsed === "object" ? p.lastUsed : {},
-      hidden: Array.isArray(p.hidden) ? p.hidden.filter((x) => typeof x === "string") : [],
-      nameOverrides: p.nameOverrides && typeof p.nameOverrides === "object" ? p.nameOverrides : {},
-      iconOverrides: p.iconOverrides && typeof p.iconOverrides === "object" ? p.iconOverrides : {},
-      removed: Array.isArray(p.removed) ? p.removed.filter((x) => typeof x === "string") : [],
-      views: p.views && typeof p.views === "object" ? p.views : {},
-      shortcuts: Array.isArray(p.shortcuts) ? p.shortcuts.filter((s) => s && typeof s.id === "string" && typeof s.name === "string" && typeof s.href === "string") : [],
-      layouts: Array.isArray(p.layouts) ? p.layouts.filter((l) => l && typeof l.id === "string" && typeof l.title === "string" && Array.isArray(l.main)) : [],
-      bindings: p.bindings && typeof p.bindings === "object" ? p.bindings : {},
-      folders: p.folders && typeof p.folders === "object" ? p.folders : {}
-    };
+    p = JSON.parse(raw);
   } catch {
-    return { ...DEFAULT_PROJECTS };
+    return null;
   }
+  if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+  return normalizeProjects(p);
+}
+function planProjectsLoad(primaryRaw, backupRaw) {
+  const primary = parseProjectsRaw(primaryRaw);
+  if (primary) return { state: primary, source: "primary", restoredFromBackup: false, writable: true };
+  const backup = parseProjectsRaw(backupRaw);
+  if (backup) return { state: backup, source: "backup", restoredFromBackup: true, writable: true };
+  const corrupt = typeof primaryRaw === "string" && primaryRaw.trim() !== "";
+  return { state: { ...DEFAULT_PROJECTS }, source: "default", restoredFromBackup: false, writable: !corrupt };
+}
+function projectsBackupWrite(primaryRaw, backupRaw) {
+  if (!parseProjectsRaw(primaryRaw)) return null;
+  if (typeof backupRaw === "string" && backupRaw === primaryRaw) return null;
+  return primaryRaw;
+}
+function projectsBackupHeal(primaryRaw, backupRaw) {
+  const primary = parseProjectsRaw(primaryRaw);
+  if (!primary) return null;
+  if (primary.layouts.length === 0) return null;
+  const backup = parseProjectsRaw(backupRaw);
+  if (backup && backup.layouts.length > 0) return null;
+  return primaryRaw;
 }
 var clamp2 = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 function findSidebar(start) {
@@ -21888,7 +21926,20 @@ function WorktableSection(props) {
   };
   const [view, setView] = (0, import_react2.useState)(loadView);
   const [notifyTick, setNotifyTick] = (0, import_react2.useState)(0);
-  const [projects, setProjects] = (0, import_react2.useState)(loadProjects);
+  const projectsLoadRef = (0, import_react2.useRef)(null);
+  if (projectsLoadRef.current === null) {
+    let primaryRaw = null;
+    let backupRaw = null;
+    try {
+      primaryRaw = localStorage.getItem(PROJECTS_KEY);
+      backupRaw = localStorage.getItem(PROJECTS_BAK_KEY);
+    } catch {
+    }
+    projectsLoadRef.current = planProjectsLoad(primaryRaw, backupRaw);
+  }
+  const [projects, setProjects] = (0, import_react2.useState)(() => projectsLoadRef.current.state);
+  const [recoverNotice, setRecoverNotice] = (0, import_react2.useState)(() => projectsLoadRef.current.restoredFromBackup);
+  const readonlyWarnedRef = (0, import_react2.useRef)(false);
   const [metas, setMetas] = (0, import_react2.useState)({});
   const [registeredIds, setRegisteredIds] = (0, import_react2.useState)(() => [...registryStore.ids]);
   const [addOpen, setAddOpen] = (0, import_react2.useState)(false);
@@ -22382,7 +22433,19 @@ function WorktableSection(props) {
   const persistProjects = (patch) => {
     setProjects((prev) => {
       const next = typeof patch === "function" ? patch(prev) : { ...prev, ...patch };
+      if (projectsLoadRef.current && !projectsLoadRef.current.writable) {
+        if (!readonlyWarnedRef.current) {
+          readonlyWarnedRef.current = true;
+          try {
+            console.warn("[worktable] \u9879\u76EE\u5B58\u6863\u4E3B\u952E\u4E0E\u5907\u4EFD\u90FD\u4E0D\u53EF\u89E3\u6790\uFF1A\u672C\u6B21\u4F1A\u8BDD\u4E0D\u56DE\u5199 localStorage\uFF08\u6539\u52A8\u53EA\u7559\u5728\u5185\u5B58\u91CC\uFF09");
+          } catch {
+          }
+        }
+        return next;
+      }
       try {
+        const backup = projectsBackupWrite(localStorage.getItem(PROJECTS_KEY), localStorage.getItem(PROJECTS_BAK_KEY));
+        if (backup !== null) localStorage.setItem(PROJECTS_BAK_KEY, backup);
         localStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
       } catch {
       }
@@ -22396,6 +22459,22 @@ function WorktableSection(props) {
     return () => {
       bindProjectRef.current = null;
     };
+  }, []);
+  (0, import_react2.useEffect)(() => {
+    const plan = projectsLoadRef.current;
+    if (!plan || !plan.restoredFromBackup) return;
+    try {
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(plan.state));
+      console.warn("[worktable] \u9879\u76EE\u5B58\u6863\u4E3B\u952E\u7F3A\u5931\u6216\u635F\u574F\uFF0C\u5DF2\u4ECE\u5907\u4EFD " + PROJECTS_BAK_KEY + " \u6062\u590D " + plan.state.layouts.length + " \u4E2A\u9879\u76EE");
+    } catch {
+    }
+  }, []);
+  (0, import_react2.useEffect)(() => {
+    try {
+      const heal = projectsBackupHeal(localStorage.getItem(PROJECTS_KEY), localStorage.getItem(PROJECTS_BAK_KEY));
+      if (heal !== null) localStorage.setItem(PROJECTS_BAK_KEY, heal);
+    } catch {
+    }
   }, []);
   (0, import_react2.useEffect)(() => {
     const saved = projects.views[CONSOLE_ID];
@@ -24333,6 +24412,13 @@ function WorktableSection(props) {
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_confirmDelete", onClick: doDelete, children: t("confirm.delete") })
       ] })
     ] }),
+    recoverNotice && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_recover", role: "status", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dsh-wt_recoverText", children: [
+        "\u26A0\uFE0F ",
+        t("recover.notice", { n: String(projects.layouts.length) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_recoverBtn", onClick: () => setRecoverNotice(false), children: t("recover.dismiss") })
+    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_projects", "data-managing": viewOptionsOpen ? "true" : void 0, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
         "button",
@@ -24571,7 +24657,10 @@ try {
     listProjectSessions,
     sessionsMenuModel,
     decideProjectOpen,
-    applyProjectOpen
+    applyProjectOpen,
+    planProjectsLoad,
+    projectsBackupWrite,
+    projectsBackupHeal
   };
 } catch {
 }

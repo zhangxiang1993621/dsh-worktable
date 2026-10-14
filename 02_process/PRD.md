@@ -176,6 +176,12 @@ ctx.slots.register({
     - views：入驻项目与「控制室」（wt-console）的视图覆盖（LayoutSpec）；
     - bindings：项目 → 绑定会话（含 wt-console 管理对话）；
     - folders：项目 → 项目文件夹（含 wt-console）；
+    - **滚动备份**：`dsh.worktable.projects.v1.bak` = 每次回写主键前的「上一份可解析旧值」；
+      挂载时 `projectsBackupHeal` 会在「主键有料而备份缺失/空档/损坏」时用主键补备份
+      （手工恢复存档后的自愈；主键本身是空档则不补）。
+      浏览器级「清除浏览数据」会连这个键一起删掉（2026-09-29 实测），故它只防「主键被误覆盖 /
+      损坏」，不防整源清空；主键缺失且备份可用时按 `planProjectsLoad` 自动救回并提示用户，
+      主键损坏且无备份时本次会话**只读**（writable=false），绝不回写默认值；
   - 卡片上报的 meta 注册表仅存内存，不持久化；
   - 更新检查：`dsh.worktable.lastUpdateCheck.v1`（上次成功检查时间戳，节流一天一次）、
     `dsh.worktable.skipVersion.v1`（忽略的版本号）、`dsh.worktable.updateCheck.v1`（自动检查开关，'0'=关）、

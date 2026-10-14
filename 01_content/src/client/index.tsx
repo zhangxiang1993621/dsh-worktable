@@ -133,6 +133,8 @@ type ProjectsState = {
 
 const PERSIST_KEY = 'dsh.worktable.view.v1'
 const PROJECTS_KEY = 'dsh.worktable.projects.v1'
+/** 项目存档的滚动备份键：每次回写主键前，把「上一份可解析的旧值」留档，用于浏览器级清数据后的兜底恢复。 */
+const PROJECTS_BAK_KEY = 'dsh.worktable.projects.v1.bak'
 const MIN_TOP = 56
 const SNAP_PX = 32
 /** 插件市场外链（GitHub 仓库，已核实可访问；PRD 提及的 dshfind.com 未验证，不用死链）。 */
@@ -365,31 +367,94 @@ function loadView(): ViewState {
   }
 }
 
-function loadProjects(): ProjectsState {
-  try {
-    const raw = localStorage.getItem(PROJECTS_KEY)
-    if (!raw) return { ...DEFAULT_PROJECTS }
-    const p = JSON.parse(raw)
-    return {
-      order: Array.isArray(p.order) ? p.order.filter((x: unknown): x is string => typeof x === 'string') : [],
-      lastUsed: p.lastUsed && typeof p.lastUsed === 'object' ? p.lastUsed : {},
-      hidden: Array.isArray(p.hidden) ? p.hidden.filter((x: unknown): x is string => typeof x === 'string') : [],
-      nameOverrides: p.nameOverrides && typeof p.nameOverrides === 'object' ? p.nameOverrides : {},
-      iconOverrides: p.iconOverrides && typeof p.iconOverrides === 'object' ? p.iconOverrides : {},
-      removed: Array.isArray(p.removed) ? p.removed.filter((x: unknown): x is string => typeof x === 'string') : [],
-      views: p.views && typeof p.views === 'object' ? p.views : {},
-      shortcuts: Array.isArray(p.shortcuts)
-        ? p.shortcuts.filter((s: any) => s && typeof s.id === 'string' && typeof s.name === 'string' && typeof s.href === 'string')
-        : [],
-      layouts: Array.isArray(p.layouts)
-        ? p.layouts.filter((l: any) => l && typeof l.id === 'string' && typeof l.title === 'string' && Array.isArray(l.main))
-        : [],
-      bindings: p.bindings && typeof p.bindings === 'object' ? p.bindings : {},
-      folders: p.folders && typeof p.folders === 'object' ? p.folders : {},
-    }
-  } catch {
-    return { ...DEFAULT_PROJECTS }
+/** 存档字段规范化：忽略旧版遗留字段、过滤非法项（与历史 loadProjects 行为逐字一致）。 */
+function normalizeProjects(p: any): ProjectsState {
+  return {
+    order: Array.isArray(p.order) ? p.order.filter((x: unknown): x is string => typeof x === 'string') : [],
+    lastUsed: p.lastUsed && typeof p.lastUsed === 'object' ? p.lastUsed : {},
+    hidden: Array.isArray(p.hidden) ? p.hidden.filter((x: unknown): x is string => typeof x === 'string') : [],
+    nameOverrides: p.nameOverrides && typeof p.nameOverrides === 'object' ? p.nameOverrides : {},
+    iconOverrides: p.iconOverrides && typeof p.iconOverrides === 'object' ? p.iconOverrides : {},
+    removed: Array.isArray(p.removed) ? p.removed.filter((x: unknown): x is string => typeof x === 'string') : [],
+    views: p.views && typeof p.views === 'object' ? p.views : {},
+    shortcuts: Array.isArray(p.shortcuts)
+      ? p.shortcuts.filter((s: any) => s && typeof s.id === 'string' && typeof s.name === 'string' && typeof s.href === 'string')
+      : [],
+    layouts: Array.isArray(p.layouts)
+      ? p.layouts.filter((l: any) => l && typeof l.id === 'string' && typeof l.title === 'string' && Array.isArray(l.main))
+      : [],
+    bindings: p.bindings && typeof p.bindings === 'object' ? p.bindings : {},
+    folders: p.folders && typeof p.folders === 'object' ? p.folders : {},
   }
+}
+
+/** 解析一份存档原文；缺失 / 空串 / 非法 JSON / 非对象 一律返回 null（回退策略交给 planProjectsLoad）。 */
+function parseProjectsRaw(raw: string | null | undefined): ProjectsState | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null
+  let p: unknown
+  try { p = JSON.parse(raw) } catch { return null }
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return null
+  return normalizeProjects(p)
+}
+
+/** 项目存档载入计划：用哪份数据 + 本会话是否允许回写。 */
+export type ProjectsLoadPlan = {
+  state: ProjectsState
+  /** primary = 主键可用；backup = 主键缺失/损坏但备份可用；default = 全新安装。 */
+  source: 'primary' | 'backup' | 'default'
+  /** true = 这次是从备份救回来的（调用方应立即写回主键并给用户提示）。 */
+  restoredFromBackup: boolean
+  /** false = 主键损坏且无可用备份：本会话只读，绝不回写（否则会把损坏读成「新装」再覆盖掉可能可恢复的数据）。 */
+  writable: boolean
+}
+
+/**
+ * 载入决策（纯函数，可回归）：
+ *   primary 可用               → 用 primary
+ *   primary 缺失/损坏 + 备份可用 → 用 backup（restoredFromBackup=true）
+ *   primary 缺失 + 无备份       → default（真·新装，可写）
+ *   primary 损坏 + 无备份       → default 且 writable=false（本会话只读）
+ * 背景：2026-09-29 实测事故——浏览器级「清除浏览数据」把整个源的 localStorage 删掉，
+ * 旧实现把「读不到」当成「新装」，挂载后的自愈/持久化立刻回写默认值，旧值不可逆。
+ */
+export function planProjectsLoad(
+  primaryRaw: string | null | undefined,
+  backupRaw: string | null | undefined,
+): ProjectsLoadPlan {
+  const primary = parseProjectsRaw(primaryRaw)
+  if (primary) return { state: primary, source: 'primary', restoredFromBackup: false, writable: true }
+  const backup = parseProjectsRaw(backupRaw)
+  if (backup) return { state: backup, source: 'backup', restoredFromBackup: true, writable: true }
+  const corrupt = typeof primaryRaw === 'string' && primaryRaw.trim() !== ''
+  return { state: { ...DEFAULT_PROJECTS }, source: 'default', restoredFromBackup: false, writable: !corrupt }
+}
+
+/** 备份写入决策（纯函数）：只有可解析的旧主键值才留档；与现有备份完全相同则不写（返回 null）。 */
+export function projectsBackupWrite(
+  primaryRaw: string | null | undefined,
+  backupRaw: string | null | undefined,
+): string | null {
+  if (!parseProjectsRaw(primaryRaw)) return null
+  if (typeof backupRaw === 'string' && backupRaw === primaryRaw) return null
+  return primaryRaw as string
+}
+
+/**
+ * 备份自愈决策（纯函数）：主键有料、备份却「缺失 / 空档 / 损坏」时，用主键补备份。
+ * 典型场景 = 手工把存档恢复回主键之后（备份还停在清空前的空档）；
+ * 不补的话下一次清空只会从一份空备份「恢复」出空工作台。
+ * 主键本身是空档时返回 null —— 不把「空工作台」固化成备份。
+ */
+export function projectsBackupHeal(
+  primaryRaw: string | null | undefined,
+  backupRaw: string | null | undefined,
+): string | null {
+  const primary = parseProjectsRaw(primaryRaw)
+  if (!primary) return null
+  if (primary.layouts.length === 0) return null
+  const backup = parseProjectsRaw(backupRaw)
+  if (backup && backup.layouts.length > 0) return null
+  return primaryRaw as string
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
@@ -1476,7 +1541,22 @@ function WorktableSection(props: any) {
 
   const [view, setView] = useState<ViewState>(loadView)
   const [notifyTick, setNotifyTick] = useState(0)
-  const [projects, setProjects] = useState<ProjectsState>(loadProjects)
+  /** 建档时的载入计划（主键 / 备份 / 只读判定）：挂载后据此回写与提示 */
+  const projectsLoadRef = useRef<ProjectsLoadPlan | null>(null)
+  if (projectsLoadRef.current === null) {
+    let primaryRaw: string | null = null
+    let backupRaw: string | null = null
+    try {
+      primaryRaw = localStorage.getItem(PROJECTS_KEY)
+      backupRaw = localStorage.getItem(PROJECTS_BAK_KEY)
+    } catch { /* 存储不可用：按全新安装处理 */ }
+    projectsLoadRef.current = planProjectsLoad(primaryRaw, backupRaw)
+  }
+  const [projects, setProjects] = useState<ProjectsState>(() => projectsLoadRef.current!.state)
+  /** 从备份救回时给一行可关闭提示（「存档被清空」是必须让用户看见的事件） */
+  const [recoverNotice, setRecoverNotice] = useState<boolean>(() => projectsLoadRef.current!.restoredFromBackup)
+  /** 只读模式（主键损坏且无备份）只提示一次，避免每次状态变更刷控制台 */
+  const readonlyWarnedRef = useRef(false)
   const [metas, setMetas] = useState<Record<string, ProjectMeta>>({})
   const [registeredIds, setRegisteredIds] = useState<string[]>(() => [...registryStore.ids])
   const [addOpen, setAddOpen] = useState(false)
@@ -1934,7 +2014,20 @@ function WorktableSection(props: any) {
   const persistProjects = (patch: Partial<ProjectsState> | ((prev: ProjectsState) => ProjectsState)) => {
     setProjects((prev) => {
       const next = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch }
-      try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(next)) } catch {}
+      // 只读模式（主键损坏且备份也不可用）：宁可不写，也不要把「读不懂」当成「没有」再覆盖一次
+      if (projectsLoadRef.current && !projectsLoadRef.current.writable) {
+        if (!readonlyWarnedRef.current) {
+          readonlyWarnedRef.current = true
+          try { console.warn('[worktable] 项目存档主键与备份都不可解析：本次会话不回写 localStorage（改动只留在内存里）') } catch {}
+        }
+        return next
+      }
+      try {
+        // 先留档「上一份可解析的旧值」，再覆盖主键：浏览器级清数据后仍可从备份救回
+        const backup = projectsBackupWrite(localStorage.getItem(PROJECTS_KEY), localStorage.getItem(PROJECTS_BAK_KEY))
+        if (backup !== null) localStorage.setItem(PROJECTS_BAK_KEY, backup)
+        localStorage.setItem(PROJECTS_KEY, JSON.stringify(next))
+      } catch {}
       return next
     })
   }
@@ -1945,6 +2038,27 @@ function WorktableSection(props: any) {
       persistProjects((prev) => ({ ...prev, bindings: { ...prev.bindings, [pid]: sid } }))
     }
     return () => { bindProjectRef.current = null }
+  }, [])
+
+  // 从备份救回：立刻把值写回主键，并在控制台留一条可追溯说明（下次载入不再走恢复分支）
+  useEffect(() => {
+    const plan = projectsLoadRef.current
+    if (!plan || !plan.restoredFromBackup) return
+    try {
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(plan.state))
+      console.warn('[worktable] 项目存档主键缺失或损坏，已从备份 ' + PROJECTS_BAK_KEY + ' 恢复 ' + plan.state.layouts.length + ' 个项目')
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 备份自愈：主键有料而备份缺失/为空（例如刚手工恢复过）→ 把主键补进备份，
+  // 否则下一次清空只会从一份空备份「恢复」出空工作台（声明在「从备份救回」之后，读到的已是救回后的主键）
+  useEffect(() => {
+    try {
+      const heal = projectsBackupHeal(localStorage.getItem(PROJECTS_KEY), localStorage.getItem(PROJECTS_BAK_KEY))
+      if (heal !== null) localStorage.setItem(PROJECTS_BAK_KEY, heal)
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 自愈：启动时若控制室存档是坏布局（旧版关掉控制室标签造成窗格退化成选择器），立即重建默认面板
@@ -3822,6 +3936,13 @@ function buildCustomLayoutPrompt(req: string): string {
         </div>
       )}
 
+      {recoverNotice && (
+        <div className="dsh-wt_recover" role="status">
+          <span className="dsh-wt_recoverText">⚠️ {t('recover.notice', { n: String(projects.layouts.length) })}</span>
+          <button type="button" className="dsh-wt_recoverBtn" onClick={() => setRecoverNotice(false)}>{t('recover.dismiss')}</button>
+        </div>
+      )}
+
       <div className="dsh-wt_projects" data-managing={viewOptionsOpen ? 'true' : undefined}>
         {/* 「工作台」控制室项目：固定首位、不可删除；未绑定点开 = 强制绑定弹窗 */}
         <button
@@ -4028,5 +4149,8 @@ try {
     sessionsMenuModel,
     decideProjectOpen,
     applyProjectOpen,
+    planProjectsLoad,
+    projectsBackupWrite,
+    projectsBackupHeal,
   }
 } catch {}

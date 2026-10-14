@@ -59,7 +59,7 @@ node --check lib/index.js
   无 src/、无 .map）→ 独立临时目录 npm install + import() 断言（apply 函数/inject 含 webServer+sessions/name/
   HEALTH_PATH/包内双 bundle 版本）→ **客户端工厂求值门禁**（ModuleLoader 恰好注册一次 + ID 校验 + 精确外部依赖
   白名单 react/react/jsx-runtime + apply/inject 断言）→ **分栏锚点 DOM 回归**（8 场景，评估安装产物 lib/client.js；
-  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 同目录工作区归属对话）→ **窗格恢复回归**（5 场景：关闭留档 / 原样恢复 / 存量救援回填 / 无清单产物候选）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
+  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 同目录工作区归属对话）→ **窗格恢复回归**（5 场景：关闭留档 / 原样恢复 / 存量救援回填 / 无清单产物候选）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **项目存档防丢失回归**（6 例：主键正常 / 主键缺失→备份恢复 / 主键损坏可救与只读 / 真·新装 / 备份写入决策 / 备份自愈；评估安装产物 lib/client.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
   脚本零 git/gh 动作，发布上传由 gh 手动完成。
   **发布禁止裸 npm pack 或手工 tar 生成发布包**；脚本从仓库任意目录调用均安全（以自身位置解析）。
 - **配套检查入口**：`npm run test:gate` = 工厂门禁 10 个失败/正向用例；
@@ -77,6 +77,8 @@ node --check lib/index.js
   `node 04_test/project-sessions.test.mjs [lib/client.js 路径]` = 项目会话联动 6 例
   （列表过滤（归档/子代理/悬空/去重/trim）/ 弹层模型（占位/打勾/补行）/ 打开决策三分支 / 未载入语义 pin /
   并发去重与 key 作用域 / 失败静默与 open 抛错静默）。
+  `node 04_test/projects-storage.test.mjs [lib/client.js 路径]` = 项目存档防丢失 6 例
+  （主键正常 / 主键缺失→备份恢复 / 主键损坏（可救 & 只读）/ 真·新装 / 备份写入决策 / 备份自愈）。
   `npm run verify:remote -- --expect-sha <release-prep 输出的 SHA> [tag]` = 发布后只读核对
   （远端固定名+版本化双资产文件名/结构/版本/双 SHA 同源且等于本地验收 SHA/安装/导入；
   远端只读，本地仅临时目录）。上传后必须跑 verify:remote 并用 --expect-sha 比对，
@@ -153,6 +155,22 @@ node --check lib/index.js
   `window.__dshWorktable` 导出。回归：`node 04_test/project-sessions.test.mjs`（6 例，已挂 release-prep 5c5）。
   未载入语义（**pin 住，别改**）：`decideProjectOpen` 对"工作区存在但全未载入"返回 `{action:'open', id: ids[0]}`、
   绑定到未知 id 仍返回该绑定；菜单侧才按"悬空 = 不显示"过滤。
+- **项目存档防丢失（2026-09-29 实测事故，红线）**：浏览器级「清除浏览数据」会把整个源的
+  localStorage 一起删掉（实测一次批量删了 ~30 个源 / 338 条记录，含 `dsh.worktable.projects.v1`、
+  `split.v2`、`mountedWidget.v1` —— 同一批次连续 seq，任何单页脚本都做不到跨源删除，故不是插件行为）。
+  旧实现把"读不到存档"当"新装"，挂载后的自愈/持久化立刻回写默认值 → 项目列表只剩内置控制室且旧值不可逆。
+  现在的契约：
+  ① 每次写主键前，把「上一份**可解析**的旧值」留档到 `dsh.worktable.projects.v1.bak`
+  （`projectsBackupWrite`：损坏值不备份、与现有备份相同不重复写）；
+  ② 载入走 `planProjectsLoad`（纯函数）：主键可用 → 用主键；主键**缺失或损坏**但备份可用 → 用备份，
+  立即写回主键 + 渲染一行可关闭提示（`recover.notice`）；主键缺失且无备份 → 默认值（真·新装，可写）；
+  主键损坏且无备份 → 默认值 + **本会话只读（writable=false），绝不回写**；
+  ③ 只读模式只 `console.warn` 一次，改动仅留在内存（宁可本次不落盘，也不覆盖可能可恢复的数据）；
+  ④ 备份自愈（`projectsBackupHeal`）：挂载时若「主键有料（layouts>0）而备份缺失/空档/损坏」，
+  立即把主键补进备份 —— 覆盖「手工把存档恢复回主键后，备份仍停在空档」这种情形，
+  否则下一次清空只会从空备份「恢复」出空工作台；主键本身是空档时不补（不把空工作台固化）。
+  回归：`node 04_test/projects-storage.test.mjs`（6 例，已挂 release-prep 5c6）；
+  突变实证：把 `planProjectsLoad` 损坏分支的 `writable` 改成 `true`，测试必须翻红。
 - **项目文件夹**：projects.v1.folders = { 项目id → 绝对路径 }；新建项目强制填写（父目录必填，
   文件夹名留空 = 用项目名），保存时走 /api/worktable/mkdir 建目录；绑定面板可改。自定义窗口
   新建会话（未选分组时）用 sessions.create({cwd: 项目文件夹})，提示词携带文件夹与「所有产出
