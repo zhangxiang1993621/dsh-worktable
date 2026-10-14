@@ -66,9 +66,8 @@ node --check lib/index.js
   `node 04_test/session-switch-compat.test.mjs [lib/client.js 路径]` = 主视图会话切换 5 场景
   （0.1.6 无 sessions.open → uiWorkspace；老宿主回落 sessions.open；两通道优先级；无通道静默；
   pickProjectSession 绑定优先 / 同目录工作区第一个对话 / 跳过归档与子代理 / 无匹配不切换）；
-  `node 04_test/pane-restore.test.mjs [lib/client.js 路径]` = 窗格恢复 5 场景
-  （closeTab 留档 / restoreClosedTab 原样放回 + 未命中无操作 / seedPaneRestore 只填空窗格 / 活通道闭环 /
-  htmlProductCandidates 无清单产物候选）；
+`node 04_test/pane-restore.test.mjs [lib/client.js 路径]` = 窗格恢复 3 场景
+（closeTab 留档 / restoreClosedTab 原样放回 + 未命中无操作 / 活通道闭环）；
   `node 04_test/server-home.test.mjs [lib/index.js 路径]` = 数据目录解析 3 组场景（子进程隔离夹具；
   **突变体验证法**：把 loadPkg 兜底的 baseDshHome() 故意改回 resolveDshHomeSafe() 恢复循环，测试必须红）；
   `node 04_test/console-card-actions.test.mjs [lib/client.js 路径]` = 控制室卡片动作 4 场景
