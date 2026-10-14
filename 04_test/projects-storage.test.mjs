@@ -139,8 +139,8 @@ function buildSandbox() {
 
 const { sandbox } = buildSandbox()
 const hooks = sandbox.window.__dshWorktable || {}
-const { planProjectsLoad, projectsBackupWrite, projectsBackupHeal } = hooks
-for (const [name, fn] of Object.entries({ planProjectsLoad, projectsBackupWrite, projectsBackupHeal })) {
+const { planProjectsLoad, projectsBackupWrite, projectsBackupHeal, planBackupAdoption, parseBackupEnvelope, pushBackup, fetchBackup } = hooks
+for (const [name, fn] of Object.entries({ planProjectsLoad, projectsBackupWrite, projectsBackupHeal, planBackupAdoption, parseBackupEnvelope, pushBackup, fetchBackup })) {
   if (typeof fn !== 'function') fail('export.' + name, 'window.__dshWorktable.' + name + ' 未导出')
 }
 
@@ -254,7 +254,68 @@ const realProjects = () => JSON.stringify({
   ok('projectsBackupHeal')
 }
 
+// 7. planBackupAdoption（磁盘备份采纳判定）：本地比磁盘副本「更空」才采纳；远端为空/缺失/更少一律不动
+//    背景：2026-10-14 再次实测源级清空——主键与 localStorage 备份同源，会一起被删；
+//    磁盘副本（DSH_HOME/worktable-backup）是唯一活过清空的一层。
+{
+  const adopt = (local, remote) => planBackupAdoption(local, remote)
+  if (adopt(0, { layouts: 3, savedAt: 1 }).adopt !== true) fail('adopt.emptyLocal', JSON.stringify(adopt(0, { layouts: 3, savedAt: 1 })))
+  if (adopt(0, { layouts: 0, savedAt: 1 }).adopt !== false) fail('adopt.remoteEmpty', '远端也空 → 不采纳（避免把空工作台固化）')
+  if (adopt(0, null).adopt !== false) fail('adopt.noRemote', '没有远端副本 → 不采纳')
+  if (adopt(3, { layouts: 3, savedAt: 1 }).adopt !== false) fail('adopt.equal', '一样多 → 不采纳')
+  if (adopt(3, { layouts: 0, savedAt: 1 }).adopt !== false) fail('adopt.localRicher', '本地更多 → 不采纳（用户可能刚删了项目）')
+  if (adopt(2, { layouts: 1, savedAt: 9 }).adopt !== false) fail('adopt.remoteFewer', '远端更少 → 不采纳')
+  const r = adopt(0, { layouts: 2, savedAt: 2 })
+  if (typeof r.reason !== 'string' || r.reason === '') fail('adopt.reason', String(r.reason))
+  if (adopt(-1, { layouts: 1 }).adopt !== false) fail('adopt.badLocal', '本地布局数非法（负数）→ 不采纳')
+  ok('planBackupAdoption')
+}
+
+// 8. parseBackupEnvelope（GET /api/worktable/backup 响应 → 可用副本）：只认「可解析 data + layouts 数 + 数值 savedAt」
+{
+  const real = realProjects()
+  const expectedLayouts = JSON.parse(real).layouts.length
+  const good = parseBackupEnvelope({ ok: true, savedAt: 1728800000000, data: real })
+  if (!good || good.layouts !== expectedLayouts) fail('env.good', JSON.stringify(good))
+  if (good.data !== real) fail('env.dataPassThrough', '应原样带出 data 供写回')
+  if (parseBackupEnvelope({ ok: true, data: null }) !== null) fail('env.noData', '没有副本应为 null')
+  if (parseBackupEnvelope({ ok: true, savedAt: 1, data: '{"order":[' }) !== null) fail('env.corrupt', 'data 不可解析应为 null')
+  if (parseBackupEnvelope({ ok: true, savedAt: 'x', data: real }) !== null) fail('env.badSavedAt', 'savedAt 非数值应为 null')
+  if (parseBackupEnvelope(null) !== null) fail('env.null', 'null 应为 null')
+  if (parseBackupEnvelope('nope') !== null) fail('env.string', '字符串应为 null')
+  if (parseBackupEnvelope({ ok: false, error: 'x' }) !== null) fail('env.error', 'ok=false 应为 null')
+  if (parseBackupEnvelope({ error: 'x' }) !== null) fail('env.noFlag', '缺 ok 字段应为 null')
+  ok('parseBackupEnvelope')
+}
+
+// 9. 备份传输契约（桩 fetch）：POST 形状/成功判定、GET 解析、非 200 与抛错一律静默失败
+{
+  const calls = []
+  sandbox.fetch = (url, init) => {
+    calls.push({ url: String(url), init })
+    if (init && init.method === 'POST') return Promise.resolve({ ok: true, json: async () => ({ ok: true }) })
+    return Promise.resolve({ ok: true, json: async () => ({ ok: true, savedAt: 1728800000000, data: realProjects() }) })
+  }
+  if (await pushBackup(realProjects()) !== true) fail('push.ok', 'POST 成功应返回 true')
+  const post = calls.find((c) => c.init && c.init.method === 'POST')
+  if (!post || !String(post.url).includes('/api/worktable/backup')) fail('push.url', JSON.stringify(post && post.url))
+  const payload = JSON.parse(String(post.init.body))
+  if (payload.name !== 'dsh.worktable.projects.v1') fail('push.name', String(payload.name))
+  if (payload.data !== realProjects()) fail('push.data', '应原样带上序列化后的存档')
+  const got = await fetchBackup()
+  if (!got || got.layouts !== JSON.parse(realProjects()).layouts.length) fail('fetch.ok', JSON.stringify(got))
+  sandbox.fetch = () => Promise.resolve({ ok: false, json: async () => ({ error: 'x' }) })
+  if (await fetchBackup() !== null) fail('fetch.notOk', '非 200 应返回 null')
+  if (await pushBackup(realProjects()) !== false) fail('push.notOk', '非 200 应返回 false')
+  sandbox.fetch = () => Promise.reject(new Error('offline'))
+  if (await fetchBackup() !== null) fail('fetch.reject', 'fetch 抛错应返回 null')
+  if (await pushBackup(realProjects()) !== false) fail('push.reject', 'fetch 抛错应返回 false')
+  sandbox.fetch = () => Promise.resolve({ ok: true, json: async () => ({ ok: true, savedAt: 1, data: '{"order":[' }) })
+  if (await fetchBackup() !== null) fail('fetch.corrupt', '损坏 data 应返回 null')
+  ok('备份传输契约（POST 形状 / GET 解析 / 非 200 与抛错静默）')
+}
+
 // 计数自检：新增用例块必须同步改 EXPECTED，用例块缺失时测试必须红
-const EXPECTED = 6
+const EXPECTED = 9
 if (pass !== EXPECTED) fail('count', '通过数 ' + pass + ' != 预期 ' + EXPECTED + '（有断言块缺失或被跳过？）')
 console.log('\nprojects-storage: ' + pass + '/' + EXPECTED + ' passed')

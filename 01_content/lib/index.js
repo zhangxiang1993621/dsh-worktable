@@ -1,7 +1,7 @@
 // src/index.ts
 import { execFile } from "node:child_process";
 import { readdirSync, realpathSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve as pathResolve, sep } from "node:path";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -115,11 +115,16 @@ function resolveDshHomeSafe() {
   cachedDshHome = baseDshHome();
   return cachedDshHome;
 }
-var PLUGIN_VERSION = false ? "dev" : "0.4.0";
+var PLUGIN_VERSION = false ? "dev" : "0.4.1";
 var name = "dsh-worktable";
 var inject = ["webServer", "sessions"];
 var HEALTH_PATH = "/api/worktable/health";
 var MAX_ENTRIES = 500;
+var BACKUP_PATH = "/api/worktable/backup";
+var BACKUP_DIR_NAME = "worktable-backup";
+var BACKUP_KEEP = 5;
+var BACKUP_NAME_RE = /^[A-Za-z0-9._-]{1,80}$/;
+var BACKUP_MAX_BYTES = 1024 * 1024;
 var FILE_TYPES = {
   html: "text/html; charset=utf-8",
   htm: "text/html; charset=utf-8",
@@ -220,6 +225,45 @@ async function readJsonBody(req) {
   } catch {
     return {};
   }
+}
+async function readJsonBodyLimited(req, limit) {
+  const chunks = [];
+  let total = 0;
+  try {
+    for await (const chunk of req) {
+      const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+      total += buf.length;
+      if (total > limit) return { value: null, tooLarge: true };
+      chunks.push(buf);
+    }
+    const text = Buffer.concat(chunks).toString("utf8");
+    return { value: text ? JSON.parse(text) : {}, tooLarge: false };
+  } catch {
+    return { value: null, tooLarge: false };
+  }
+}
+function backupRootDir() {
+  return pathResolve(resolveDshHomeSafe(), BACKUP_DIR_NAME);
+}
+async function pruneBackups(dir) {
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".json"));
+  const metas = [];
+  for (const f of files) {
+    try {
+      const env = JSON.parse(await readFile(pathResolve(dir, f), "utf8"));
+      metas.push({ file: f, savedAt: typeof env?.savedAt === "number" ? env.savedAt : 0 });
+    } catch {
+      metas.push({ file: f, savedAt: 0 });
+    }
+  }
+  metas.sort((a, b) => b.savedAt - a.savedAt || (a.file < b.file ? 1 : -1));
+  for (const extra of metas.slice(BACKUP_KEEP)) {
+    try {
+      await unlink(pathResolve(dir, extra.file));
+    } catch {
+    }
+  }
+  return Math.min(BACKUP_KEEP, metas.length);
 }
 async function listDirectory(path) {
   const abs = pathResolve(path);
@@ -347,6 +391,80 @@ function apply(ctx) {
     path: HEALTH_PATH,
     handler: (_req, res) => {
       json(res, 200, { plugin: "dsh-worktable", version: PLUGIN_VERSION, ok: true });
+    }
+  });
+  registerRoute({
+    kind: "exact",
+    path: BACKUP_PATH,
+    handler: async (req, res) => {
+      try {
+        if (req.method === "GET") {
+          const u = new URL(req.url ?? "/", "http://dsh.internal");
+          const name3 = u.searchParams.get("name") || "";
+          if (!BACKUP_NAME_RE.test(name3)) {
+            json(res, 400, { error: "bad name" });
+            return;
+          }
+          const dir2 = pathResolve(backupRootDir(), name3);
+          let newest = null;
+          try {
+            for (const f of await readdir(dir2)) {
+              if (!f.endsWith(".json")) continue;
+              try {
+                const env = JSON.parse(await readFile(pathResolve(dir2, f), "utf8"));
+                if (typeof env?.data === "string" && typeof env?.savedAt === "number" && (newest === null || env.savedAt >= newest.savedAt)) {
+                  newest = { savedAt: env.savedAt, data: env.data };
+                }
+              } catch {
+              }
+            }
+          } catch {
+          }
+          if (newest === null) {
+            json(res, 200, { ok: true, name: name3, data: null });
+            return;
+          }
+          json(res, 200, { ok: true, name: name3, savedAt: newest.savedAt, data: newest.data });
+          return;
+        }
+        if (req.method !== "POST") {
+          res.writeHead(405);
+          res.end();
+          return;
+        }
+        const body = await readJsonBodyLimited(req, BACKUP_MAX_BYTES);
+        if (body.tooLarge) {
+          json(res, 413, { error: "data too large" });
+          return;
+        }
+        const value = body.value;
+        const name2 = value && typeof value.name === "string" ? value.name : "";
+        const data = value && typeof value.data === "string" ? value.data : "";
+        if (!BACKUP_NAME_RE.test(name2)) {
+          json(res, 400, { error: "bad name" });
+          return;
+        }
+        if (data.trim() === "") {
+          json(res, 400, { error: "missing data" });
+          return;
+        }
+        try {
+          const parsed = JSON.parse(data);
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not object");
+        } catch {
+          json(res, 400, { error: "data is not a JSON object" });
+          return;
+        }
+        const dir = pathResolve(backupRootDir(), name2);
+        await mkdir(dir, { recursive: true });
+        const savedAt = Date.now();
+        const file = pathResolve(dir, savedAt + "-" + Math.random().toString(36).slice(2, 8) + ".json");
+        await writeFile(file, JSON.stringify({ v: 1, name: name2, savedAt, data }), "utf8");
+        const kept = await pruneBackups(dir);
+        json(res, 200, { ok: true, name: name2, file, savedAt, kept });
+      } catch (err) {
+        json(res, 500, { error: String(err) });
+      }
     }
   });
   registerRoute({
@@ -609,6 +727,7 @@ function apply(ctx) {
   setupTerminal(webServer, ctx);
 }
 export {
+  BACKUP_PATH,
   HEALTH_PATH,
   __wtLoadProbeStats,
   apply,

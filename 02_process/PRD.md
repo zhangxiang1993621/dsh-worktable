@@ -183,7 +183,16 @@ ctx.slots.register({
       （手工恢复存档后的自愈；主键本身是空档则不补）。
       浏览器级「清除浏览数据」会连这个键一起删掉（2026-09-29 实测），故它只防「主键被误覆盖 /
       损坏」，不防整源清空；主键缺失且备份可用时按 `planProjectsLoad` 自动救回并提示用户，
-      主键损坏且无备份时本次会话**只读**（writable=false），绝不回写默认值；
+      主键损坏且无备份时本次会话**只读**（writable=false），绝不回写默认值。
+  - **磁盘备份（2026-10-14 定案）**：同源备份挡不住源级清空（2026-10-14 实测主键与 .bak 双双成空档，
+    split.v2/view.v1/mountedWidget.v1 只剩删除墓碑）。故每次落盘后另推一份到宿主磁盘：
+    `POST /api/worktable/backup` 落 `<DSH_HOME>/worktable-backup/<name>/<savedAt>-<rand>.json`
+    （信封 `{ v, name, savedAt, data }`，保留最近 5 份；name 白名单 `[A-Za-z0-9._-]{1,80}`、
+    body ≤1MB、data 必须是 JSON 对象），`GET /api/worktable/backup?name=…` 取最新一份；
+    客户端持久化后防抖 2.5s 推送（同内容去重、失败静默）。载入时 `planBackupAdoption`：
+    **仅当磁盘副本布局数多于本地**才采纳（写回主键 + .bak 并走 `recover.notice` 提示）——
+    「用户主动删光项目」会把磁盘副本也推成空档，因此不会被复活；
+  - `dsh.worktable.view.v1` 等纯视图键不参与磁盘备份（只备份 projects.v1 这一层）；
   - 自动挂载 v2：`dsh.worktable.widgetBindings.v2` / `pendingMount.v2` / `mountedWidget.v2`
     （后两者同为 dsh.worktable 前缀）；分别记录归属、待补挂与已消费结果，结构及迁移见 §14。
   - `dsh.worktable.notifyAck.v1`：会话 id → `done` / 旧版 `need` / `need:` 加排序后的待决身份集合；

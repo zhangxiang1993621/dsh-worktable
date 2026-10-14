@@ -4,6 +4,7 @@ import { NS, zh, en, type WorktableKey } from './locales'
 import { isAbs, joinPath, parentPathOf, basenameOf } from './pathutil'
 import { splitStore, SplitWorkspace, setSplitT, setSplitEnv, type LayoutSpec, type SplitPane, type ConsoleCardData } from './split'
 import { renameOverride, popoverPos, collectTabs, migrateTabsInto } from './consoleEdit'
+import { fetchBackup, parseBackupEnvelope, planBackupAdoption, pushBackup } from './backupSync'
 import { appendHostInput } from './hostInput'
 import { worktableUpgrade } from './hostTransport'
 import { WidgetMountRegistry, newWidgetId, widgetManifestPath, type WidgetBinding } from './widgetMount'
@@ -462,6 +463,23 @@ export function projectsBackupHeal(
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
+
+/**
+ * 磁盘备份推送（模块级）：落盘后防抖 2.5s 推一份到 <DSH_HOME>/worktable-backup。
+ * 去重：与上次成功推送内容相同则跳过（载入/自愈会触发多次 persist，避免刷盘）。
+ * 失败静默——备份是加分项，绝不能影响本地落盘主流程。
+ */
+let diskBackupTimer: ReturnType<typeof setTimeout> | null = null
+let diskBackupLastSent = ''
+function queueDiskBackup(text: string): void {
+  if (!text || text === diskBackupLastSent) return
+  try { if (diskBackupTimer !== null) clearTimeout(diskBackupTimer) } catch {}
+  diskBackupTimer = setTimeout(() => {
+    diskBackupTimer = null
+    if (text === diskBackupLastSent) return
+    void pushBackup(text).then((ok) => { if (ok) diskBackupLastSent = text }).catch(() => {})
+  }, 2500)
+}
 
 type FloatRect = { top: number }
 
@@ -1808,7 +1826,10 @@ function WorktableSection(props: any) {
         // 先留档「上一份可解析的旧值」，再覆盖主键：浏览器级清数据后仍可从备份救回
         const backup = projectsBackupWrite(localStorage.getItem(PROJECTS_KEY), localStorage.getItem(PROJECTS_BAK_KEY))
         if (backup !== null) localStorage.setItem(PROJECTS_BAK_KEY, backup)
-        localStorage.setItem(PROJECTS_KEY, JSON.stringify(next))
+        const text = JSON.stringify(next)
+        localStorage.setItem(PROJECTS_KEY, text)
+        // 再推一份到磁盘：同源清空会把主键与 .bak 一起删掉，磁盘副本是最后一道防线
+        queueDiskBackup(text)
       } catch {}
       return next
     })
@@ -1840,6 +1861,34 @@ function WorktableSection(props: any) {
       const heal = projectsBackupHeal(localStorage.getItem(PROJECTS_KEY), localStorage.getItem(PROJECTS_BAK_KEY))
       if (heal !== null) localStorage.setItem(PROJECTS_BAK_KEY, heal)
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 磁盘副本兜底（2026-10-14）：源级「清除浏览数据」会把主键与 .bak 一起删掉 → 本地为空而磁盘副本有料时采纳它。
+  // 判定只看「布局数」：用户主动删光项目时磁盘副本也会被写成空档 → 空对空不采纳，不会复活已删项目。
+  useEffect(() => {
+    const plan = projectsLoadRef.current
+    if (!plan) return
+    if (plan.state.layouts.length > 0) {
+      // 本地有料：顺手推一份，保证首次启动就把磁盘副本建起来
+      queueDiskBackup(JSON.stringify(plan.state))
+      return
+    }
+    let alive = true
+    void fetchBackup().then((remote) => {
+      if (!alive) return
+      if (remote === null || !planBackupAdoption(plan.state.layouts.length, remote).adopt) return
+      try {
+        const restored = normalizeProjects(JSON.parse(remote.data))
+        localStorage.setItem(PROJECTS_BAK_KEY, remote.data)
+        localStorage.setItem(PROJECTS_KEY, remote.data)
+        diskBackupLastSent = remote.data
+        setProjects(restored)
+        setRecoverNotice(true)
+        console.warn('[worktable] 本地项目存档为空（源级清空？），已从磁盘备份恢复 ' + restored.layouts.length + ' 个项目（写入于 ' + new Date(remote.savedAt).toLocaleString() + '）')
+      } catch {}
+    }).catch(() => {})
+    return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -3777,6 +3826,10 @@ try {
     planProjectsLoad,
     projectsBackupWrite,
     projectsBackupHeal,
+    planBackupAdoption,
+    parseBackupEnvelope,
+    pushBackup,
+    fetchBackup,
     openMainSession,
     currentMainSessionId,
   }

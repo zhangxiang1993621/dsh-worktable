@@ -9125,7 +9125,7 @@ var CHANGELOG_V030 = `\u66F4\u65B0\u516C\u544A \xB7 v0.4.0
 \u30103.1 \u6587\u5B57\u4E0E\u7EC6\u8282\u6253\u78E8\u3011\u5168\u5C40\u5B57\u4F53\u4E0E\u5B57\u53F7\u7EDF\u4E00\u4F18\u5316\u3001\u4E0B\u62C9\u9762\u677F\u73BB\u7483\u5316\u4E0E\u5BF9\u9F50\u3001\u83DC\u5355\u70B9\u9009\u540E\u4FDD\u6301\u6253\u5F00\u4FBF\u4E8E\u8FDE\u7EED\u9884\u89C8\u3001\u6309\u94AE\u63CF\u8FB9\u4E0E\u60AC\u505C\u53CD\u9988\u7B49\u4EA4\u4E92\u7EC6\u8282\uFF1B\u540C\u65F6\u4FEE\u590D\u4E86\u591A\u9879\u4F53\u9A8C\u95EE\u9898\uFF08\u7167\u7247\u4E0A\u4F20\u6E05\u6670\u5EA6\u3001\u80CC\u666F\u7F51\u683C\u7EBF\u5728\u7167\u7247\u6A21\u5F0F\u4E0B\u4E0D\u751F\u6548\u3001\u6D45\u8272\u4E3B\u9898\u4E0B\u5DE5\u4F5C\u72B6\u6001\u5149\u6548\u4E0D\u53EF\u89C1\u7B49\uFF09\u3002`;
 
 // src/client/updateCheck.ts
-var LOCAL_VERSION = false ? "dev" : "0.4.0";
+var LOCAL_VERSION = false ? "dev" : "0.4.1";
 var UPDATE_REPO = "Aisland-SJL/dsh-worktable";
 var K_UPDATE_CHECK = "dsh.worktable.updateCheck.v1";
 var K_LAST_CHECK = "dsh.worktable.lastUpdateCheck.v1";
@@ -20411,6 +20411,58 @@ try {
 } catch {
 }
 
+// src/client/backupSync.ts
+var BACKUP_NAME = "dsh.worktable.projects.v1";
+var BACKUP_PATH = "/api/worktable/backup";
+function planBackupAdoption(localLayouts, remote) {
+  if (typeof localLayouts !== "number" || !Number.isFinite(localLayouts) || localLayouts < 0) {
+    return { adopt: false, reason: "bad-local" };
+  }
+  if (!remote || typeof remote.layouts !== "number" || !Number.isFinite(remote.layouts)) {
+    return { adopt: false, reason: "no-remote" };
+  }
+  if (remote.layouts <= 0) return { adopt: false, reason: "remote-empty" };
+  if (remote.layouts <= localLayouts) return { adopt: false, reason: "local-not-emptier" };
+  return { adopt: true, reason: "adopt" };
+}
+function parseBackupEnvelope(input) {
+  if (typeof input !== "object" || input === null) return null;
+  const o = input;
+  if (o.ok !== true) return null;
+  if (typeof o.savedAt !== "number" || !Number.isFinite(o.savedAt)) return null;
+  if (typeof o.data !== "string" || o.data.trim() === "") return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(o.data);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.layouts)) return null;
+  return { layouts: parsed.layouts.length, data: o.data, savedAt: o.savedAt };
+}
+async function fetchBackup() {
+  try {
+    const res = await fetch(BACKUP_PATH + "?name=" + encodeURIComponent(BACKUP_NAME), { cache: "no-store" });
+    if (!res.ok) return null;
+    return parseBackupEnvelope(await res.json());
+  } catch {
+    return null;
+  }
+}
+async function pushBackup(data) {
+  if (typeof data !== "string" || data.trim() === "") return false;
+  try {
+    const res = await fetch(BACKUP_PATH, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: BACKUP_NAME, data })
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // src/client/sessionCompat.ts
 function currentSessionOf(snapshot) {
   if (typeof snapshot?.current === "string") return snapshot.current;
@@ -20941,7 +20993,7 @@ var WAVE_BG_B64 = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQUFBAYFBQUHBgYHCQ8KCQgIC
 
 // src/client/index.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
-var LOCAL_VERSION2 = false ? "dev" : "0.4.0";
+var LOCAL_VERSION2 = false ? "dev" : "0.4.1";
 var UPDATE_REPO2 = "Aisland-SJL/dsh-worktable";
 var { command: UPGRADE_CMD, prompt: UPGRADE_AI2, desktop: DESKTOP_HOST } = worktableUpgrade();
 var ICON_SYNC = /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 16 16", "aria-hidden": true, children: [
@@ -21238,6 +21290,23 @@ function projectsBackupHeal(primaryRaw, backupRaw) {
   return primaryRaw;
 }
 var clamp2 = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+var diskBackupTimer = null;
+var diskBackupLastSent = "";
+function queueDiskBackup(text2) {
+  if (!text2 || text2 === diskBackupLastSent) return;
+  try {
+    if (diskBackupTimer !== null) clearTimeout(diskBackupTimer);
+  } catch {
+  }
+  diskBackupTimer = setTimeout(() => {
+    diskBackupTimer = null;
+    if (text2 === diskBackupLastSent) return;
+    void pushBackup(text2).then((ok) => {
+      if (ok) diskBackupLastSent = text2;
+    }).catch(() => {
+    });
+  }, 2500);
+}
 function findSidebar(start) {
   let el = start;
   while (el && el !== document.body) {
@@ -22507,7 +22576,9 @@ function WorktableSection(props) {
       try {
         const backup = projectsBackupWrite(localStorage.getItem(PROJECTS_KEY), localStorage.getItem(PROJECTS_BAK_KEY));
         if (backup !== null) localStorage.setItem(PROJECTS_BAK_KEY, backup);
-        localStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
+        const text2 = JSON.stringify(next);
+        localStorage.setItem(PROJECTS_KEY, text2);
+        queueDiskBackup(text2);
       } catch {
       }
       return next;
@@ -22536,6 +22607,33 @@ function WorktableSection(props) {
       if (heal !== null) localStorage.setItem(PROJECTS_BAK_KEY, heal);
     } catch {
     }
+  }, []);
+  (0, import_react2.useEffect)(() => {
+    const plan = projectsLoadRef.current;
+    if (!plan) return;
+    if (plan.state.layouts.length > 0) {
+      queueDiskBackup(JSON.stringify(plan.state));
+      return;
+    }
+    let alive = true;
+    void fetchBackup().then((remote) => {
+      if (!alive) return;
+      if (remote === null || !planBackupAdoption(plan.state.layouts.length, remote).adopt) return;
+      try {
+        const restored = normalizeProjects(JSON.parse(remote.data));
+        localStorage.setItem(PROJECTS_BAK_KEY, remote.data);
+        localStorage.setItem(PROJECTS_KEY, remote.data);
+        diskBackupLastSent = remote.data;
+        setProjects(restored);
+        setRecoverNotice(true);
+        console.warn("[worktable] \u672C\u5730\u9879\u76EE\u5B58\u6863\u4E3A\u7A7A\uFF08\u6E90\u7EA7\u6E05\u7A7A\uFF1F\uFF09\uFF0C\u5DF2\u4ECE\u78C1\u76D8\u5907\u4EFD\u6062\u590D " + restored.layouts.length + " \u4E2A\u9879\u76EE\uFF08\u5199\u5165\u4E8E " + new Date(remote.savedAt).toLocaleString() + "\uFF09");
+      } catch {
+      }
+    }).catch(() => {
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
   (0, import_react2.useEffect)(() => {
     const saved = projects.views[CONSOLE_ID];
@@ -24567,6 +24665,10 @@ try {
     planProjectsLoad,
     projectsBackupWrite,
     projectsBackupHeal,
+    planBackupAdoption,
+    parseBackupEnvelope,
+    pushBackup,
+    fetchBackup,
     openMainSession,
     currentMainSessionId
   };

@@ -57,7 +57,7 @@ node --check lib/index.js
   无 src/、无 .map）→ 独立临时目录 npm install + import() 断言（apply 函数/inject 含 webServer+sessions/name/
   HEALTH_PATH/包内双 bundle 版本）→ **客户端工厂求值门禁**（ModuleLoader 恰好注册一次 + ID 校验 + 精确外部依赖
   白名单 react/react/jsx-runtime + apply/inject 断言）→ **分栏锚点 DOM 回归**（8 场景，评估安装产物 lib/client.js；
-  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 两通道优先级 / 无通道静默 / pickProjectSession 四判）→ **窗格恢复回归**（3 场景：关闭留档 / 原样恢复 + 未命中无操作 / 活通道闭环）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **项目存档防丢失回归**（6 例：主键正常 / 主键缺失→备份恢复 / 主键损坏可救与只读 / 真·新装 / 备份写入决策 / 备份自愈；评估安装产物 lib/client.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
+  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 两通道优先级 / 无通道静默 / pickProjectSession 四判）→ **窗格恢复回归**（3 场景：关闭留档 / 原样恢复 + 未命中无操作 / 活通道闭环）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **项目存档防丢失回归**（9 例：主键正常 / 主键缺失→备份恢复 / 主键损坏可救与只读 / 真·新装 / 备份写入决策 / 备份自愈 / 磁盘副本采纳判定 / 备份响应解析 / 备份传输契约；评估安装产物 lib/client.js）→ **磁盘备份路由回归**（3 组场景：落盘+取最新 / 轮转 5 份 / 路径围栏与入参校验；评估安装产物 lib/index.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
   脚本零 git/gh 动作，发布上传由 gh 手动完成。
   **发布禁止裸 npm pack 或手工 tar 生成发布包**；脚本从仓库任意目录调用均安全（以自身位置解析）。
 - **配套检查入口**：`npm run test:gate` = 工厂门禁 10 个失败/正向用例；
@@ -75,8 +75,11 @@ node --check lib/index.js
   `node 04_test/project-sessions.test.mjs [lib/client.js 路径]` = 项目会话联动 6 例
   （列表过滤（归档/子代理/悬空/去重/trim）/ 弹层模型（占位/打勾/补行）/ 打开决策三分支 / 未载入语义 pin /
   并发去重与 key 作用域 / 失败静默与 open 抛错静默）。
-  `node 04_test/projects-storage.test.mjs [lib/client.js 路径]` = 项目存档防丢失 6 例
-  （主键正常 / 主键缺失→备份恢复 / 主键损坏（可救 & 只读）/ 真·新装 / 备份写入决策 / 备份自愈）。
+  `node 04_test/projects-storage.test.mjs [lib/client.js 路径]` = 项目存档防丢失 9 例
+  （主键正常 / 主键缺失→备份恢复 / 主键损坏（可救 & 只读）/ 真·新装 / 备份写入决策 / 备份自愈 /
+  磁盘副本采纳判定 planBackupAdoption / 备份响应解析 parseBackupEnvelope / 备份传输契约（桩 fetch））。
+  `node 04_test/server-backup-route.test.mjs [lib/index.js 路径]` = 磁盘备份路由 3 组场景（子进程隔离 DSH_HOME；
+  落盘 + 取最新 / 轮转只留 5 份（同毫秒写入不互相覆盖）/ 路径围栏（../ 与 / → 400 不落盘）+ 入参校验（非 JSON 400、超长 413、缺字段 400）+ 无副本返回 data:null）。
   `npm run verify:remote -- --expect-sha <release-prep 输出的 SHA> [tag]` = 发布后只读核对
   （远端固定名+版本化双资产文件名/结构/版本/双 SHA 同源且等于本地验收 SHA/安装/导入；
   远端只读，本地仅临时目录）。上传后必须跑 verify:remote 并用 --expect-sha 比对，
@@ -169,8 +172,21 @@ node --check lib/index.js
   ④ 备份自愈（`projectsBackupHeal`）：挂载时若「主键有料（layouts>0）而备份缺失/空档/损坏」，
   立即把主键补进备份 —— 覆盖「手工把存档恢复回主键后，备份仍停在空档」这种情形，
   否则下一次清空只会从空备份「恢复」出空工作台；主键本身是空档时不补（不把空工作台固化）。
-  回归：`node 04_test/projects-storage.test.mjs`（6 例，已挂 release-prep 5c6）；
+  回归：`node 04_test/projects-storage.test.mjs`（9 例，已挂 release-prep 5c6；磁盘副本 3 例随 5c7 一并跑）；
   突变实证：把 `planProjectsLoad` 损坏分支的 `writable` 改成 `true`，测试必须翻红。
+- **磁盘备份（2026-10-14 根治，红线）**：**同源备份救不了源级清空**——`projects.v1` 与 `.bak` 同在
+  127.0.0.1:3080 这一个源里，一次「清除浏览数据」会把两者一起删掉（2026-10-14 实测：主键与 .bak 双双成空档，
+  LevelDB 里 split.v2/view.v1/mountedWidget.v1 全是删除墓碑；9/29 那次同型）。所以每次落盘后再推一份到**宿主磁盘**：
+  ① 宿主路由 `GET/POST /api/worktable/backup`（`src/index.ts`）把信封 `{ v, name, savedAt, data }` 写到
+  `<DSH_HOME>/worktable-backup/<name>/<savedAt>-<rand>.json`，**保留最近 5 份**；name 只允许
+  `[A-Za-z0-9._-]{1,80}`（防路径穿越）、body 上限 1MB（超限 413）、data 必须是 JSON 对象（否则 400）；
+  ② 客户端（`src/client/backupSync.ts`）在 persist 后**防抖 2.5s 推送**（同内容去重、失败静默，不影响本地落盘）；
+  ③ 载入时 `planBackupAdoption` 判定：**只有本地比磁盘副本更空（remote.layouts > local.layouts）才采纳**，
+  采纳后写回主键 + `.bak` 并复用 `recover.notice` 提示；远端为空/缺失/更少一律不动 —— 因此「用户主动删光项目」
+  （磁盘副本也会被推成空档 → 空对空不采纳）不会被复活，而源级清空（本地空、磁盘有料）能自动救回；
+  ④ 只备份 `projects.v1` 这一层（项目 + 布局 + 文件夹 + 绑定），不备份 split.v2/view.v1（纯视图几何）。
+  回归：`node 04_test/server-backup-route.test.mjs`（3 组场景，已挂 release-prep 5c7）；**宿主半新增路由，
+  生效需重启 dsh web**。
 - **项目文件夹**：projects.v1.folders = { 项目id → 绝对路径 }；新建项目强制填写（父目录必填，
   文件夹名留空 = 用项目名），保存时走 /api/worktable/mkdir 建目录；绑定面板可改。自定义窗口
   新建会话（未选分组时）用 sessions.create({cwd: 项目文件夹})，提示词携带文件夹与「所有产出

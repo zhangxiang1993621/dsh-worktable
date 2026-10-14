@@ -1,7 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { execFile } from 'node:child_process'
 import { readdirSync, realpathSync } from 'node:fs'
-import { readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { dirname, resolve as pathResolve, sep } from 'node:path'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
@@ -64,6 +64,17 @@ export const inject = ['webServer', 'sessions']
 export const HEALTH_PATH = '/api/worktable/health'
 
 const MAX_ENTRIES = 500
+
+/**
+ * 项目存档磁盘备份（2026-10-14 定案）：源级「清除浏览数据」会同时删掉 localStorage 的
+ * projects.v1 与 .bak，同源备份救不回来 → 另存一份到 <DSH_HOME>/worktable-backup/<name>/。
+ * 保留最近 KEEP 份；名字只允许字母数字与 . _ -（防路径穿越）。
+ */
+export const BACKUP_PATH = '/api/worktable/backup'
+const BACKUP_DIR_NAME = 'worktable-backup'
+const BACKUP_KEEP = 5
+const BACKUP_NAME_RE = /^[A-Za-z0-9._-]{1,80}$/
+const BACKUP_MAX_BYTES = 1024 * 1024
 
 /** 本地文件/站点静态资源的 MIME 映射（file 与 site 两条路由共用） */
 const FILE_TYPES: Record<string, string> = {
@@ -153,6 +164,48 @@ async function readJsonBody(req: any): Promise<any> {
   const text = Buffer.concat(chunks).toString('utf8')
   if (!text) return {}
   try { return JSON.parse(text) } catch { return {} }
+}
+
+/** 带体积上限的请求体读取：超过 limit 立刻停读并标记 tooLarge（备份路由专用，避免超大 body 打爆内存） */
+async function readJsonBodyLimited(req: any, limit: number): Promise<{ value: any; tooLarge: boolean }> {
+  const chunks: Buffer[] = []
+  let total = 0
+  try {
+    for await (const chunk of req) {
+      const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
+      total += buf.length
+      if (total > limit) return { value: null, tooLarge: true }
+      chunks.push(buf)
+    }
+    const text = Buffer.concat(chunks).toString('utf8')
+    return { value: text ? JSON.parse(text) : {}, tooLarge: false }
+  } catch {
+    return { value: null, tooLarge: false }
+  }
+}
+
+/** 备份根目录：<DSH_HOME>/worktable-backup（必须走官方解析，禁止手拼 ~/.dsh） */
+function backupRootDir(): string {
+  return pathResolve(resolveDshHomeSafe(), BACKUP_DIR_NAME)
+}
+
+/** 按 savedAt 保留最近 BACKUP_KEEP 份，返回实际保留数（读不懂的文件按最旧处理） */
+async function pruneBackups(dir: string): Promise<number> {
+  const files = (await readdir(dir)).filter((f) => f.endsWith('.json'))
+  const metas: { file: string; savedAt: number }[] = []
+  for (const f of files) {
+    try {
+      const env = JSON.parse(await readFile(pathResolve(dir, f), 'utf8'))
+      metas.push({ file: f, savedAt: typeof env?.savedAt === 'number' ? env.savedAt : 0 })
+    } catch {
+      metas.push({ file: f, savedAt: 0 })
+    }
+  }
+  metas.sort((a, b) => b.savedAt - a.savedAt || (a.file < b.file ? 1 : -1))
+  for (const extra of metas.slice(BACKUP_KEEP)) {
+    try { await unlink(pathResolve(dir, extra.file)) } catch {}
+  }
+  return Math.min(BACKUP_KEEP, metas.length)
 }
 
 /** 列出一个目录层级（目录在前、大小写不敏感排序、上限 500、隐藏项标注） */
@@ -271,6 +324,59 @@ export function apply(ctx: Context) {
     path: HEALTH_PATH,
     handler: (_req: any, res: any) => {
       json(res, 200, { plugin: 'dsh-worktable', version: PLUGIN_VERSION, ok: true })
+    },
+  })
+
+  // 项目存档磁盘备份：GET 取最新一份 / POST 落盘（保留最近 BACKUP_KEEP 份）。
+  // 这是源级清空 localStorage 后的最后一道防线，契约见 src/client/backupSync.ts 与 AGENTS.md。
+  registerRoute({
+    kind: 'exact',
+    path: BACKUP_PATH,
+    handler: async (req: any, res: any) => {
+      try {
+        if (req.method === 'GET') {
+          const u = new URL(req.url ?? '/', 'http://dsh.internal')
+          const name = u.searchParams.get('name') || ''
+          if (!BACKUP_NAME_RE.test(name)) { json(res, 400, { error: 'bad name' }); return }
+          const dir = pathResolve(backupRootDir(), name)
+          let newest: { savedAt: number; data: string } | null = null
+          try {
+            for (const f of await readdir(dir)) {
+              if (!f.endsWith('.json')) continue
+              try {
+                const env = JSON.parse(await readFile(pathResolve(dir, f), 'utf8'))
+                if (typeof env?.data === 'string' && typeof env?.savedAt === 'number' && (newest === null || env.savedAt >= newest.savedAt)) {
+                  newest = { savedAt: env.savedAt, data: env.data }
+                }
+              } catch {}
+            }
+          } catch { /* 目录不存在 = 还没有任何备份 */ }
+          if (newest === null) { json(res, 200, { ok: true, name, data: null }); return }
+          json(res, 200, { ok: true, name, savedAt: newest.savedAt, data: newest.data })
+          return
+        }
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return }
+        const body = await readJsonBodyLimited(req, BACKUP_MAX_BYTES)
+        if (body.tooLarge) { json(res, 413, { error: 'data too large' }); return }
+        const value = body.value
+        const name = value && typeof value.name === 'string' ? value.name : ''
+        const data = value && typeof value.data === 'string' ? value.data : ''
+        if (!BACKUP_NAME_RE.test(name)) { json(res, 400, { error: 'bad name' }); return }
+        if (data.trim() === '') { json(res, 400, { error: 'missing data' }); return }
+        try {
+          const parsed = JSON.parse(data)
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('not object')
+        } catch { json(res, 400, { error: 'data is not a JSON object' }); return }
+        const dir = pathResolve(backupRootDir(), name)
+        await mkdir(dir, { recursive: true })
+        const savedAt = Date.now()
+        const file = pathResolve(dir, savedAt + '-' + Math.random().toString(36).slice(2, 8) + '.json')
+        await writeFile(file, JSON.stringify({ v: 1, name, savedAt, data }), 'utf8')
+        const kept = await pruneBackups(dir)
+        json(res, 200, { ok: true, name, file, savedAt, kept })
+      } catch (err) {
+        json(res, 500, { error: String(err) })
+      }
     },
   })
 

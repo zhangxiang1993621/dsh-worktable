@@ -262,7 +262,23 @@ if (storageRun.status !== 0) {
   console.error(storageRun.stderr || storageRun.stdout)
   process.exit(1)
 }
-console.log('[release-prep] projects storage tests passed (6 examples, on installed artifact)')
+console.log('[release-prep] projects storage tests passed (9 examples, on installed artifact)')
+
+// ---------- 5c7. 磁盘备份路由回归（2026-10-14 根治：源级清空会连 .bak 一起删，另存 DSH_HOME） ----------
+// 评估「安装目录中的最终产物」lib/index.js：落盘/取最新/轮转 5 份/路径围栏/入参校验/无副本
+const backupRouteTest = join(HERE, '..', '04_test', 'server-backup-route.test.mjs')
+const backupSrc = join(inst, 'node_modules', 'dsh-worktable', 'lib', 'index.js')
+if (!existsSync(backupRouteTest) || !existsSync(backupSrc)) {
+  console.error('[release-prep] FAIL: server-backup-route.test.mjs or installed lib/index.js missing')
+  process.exit(1)
+}
+const backupRun = spawnSync(process.execPath, [backupRouteTest, backupSrc], { cwd: HERE, stdio: 'pipe', encoding: 'utf8' })
+if (backupRun.status !== 0) {
+  console.error('[release-prep] FAIL: server-backup-route.test.mjs')
+  console.error(backupRun.stderr || backupRun.stdout)
+  process.exit(1)
+}
+console.log('[release-prep] disk backup route tests passed (3 scenarios, on installed artifact)')
 
 // ---------- 5d. 服务端数据目录解析回归（loadPkg ↔ resolveDshHomeSafe 循环调用修复） ----------
 // 评估「安装目录中的最终产物」lib/index.js；官方路径 / 包不可解析兜底 / ~ 与相对路径展开
