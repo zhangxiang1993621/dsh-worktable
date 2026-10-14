@@ -18,10 +18,8 @@
   「解包 / 复制 / 实跑用户路径」；「构建成功」「bundle 里有字符串」「退出码 0」不算验收。
 - **发布前自跑最终产物清单**：干净目录安装、最终包逐文件核对、双资产哈希、关键行逐字
   grep —— 先自查再报告，不等外部复审来抓。
-- **发布包验收=结构检查 + 真实安装，两道都保留**：npm pack 标准格式（package/ 前缀 + files
-  白名单精确 7 文件，不含 src/、不含 .map）与「独立目录 npm install + import() 断言」
-  缺一不可。教训：v0.3.0 手工 tar 出无前缀平铺包且误卷源码树，「解包核对（文件都在）」发现不了，
-  只有 npm install 复现失败；「文件都在」 ≠ 「消费方（npm/dsh plugin add）能装」。
+- **发布包验收=结构检查 + 真实安装**：标准 package/ 前缀、白名单精确 7 文件（无 src/、.map），
+  再独立目录 npm install + import() 断言；仅核对文件存在不能证明包可安装。
 - **声明可证伪，不许写满**：验收结论只写已验证范围。「通知全覆盖」「等价端到端」这类表述会被
   反向检查打脸——只写「版本比较逻辑上重新激活」「验证了安装与服务端模块导入」。
 - **同 tag 资产不可覆盖（用户已拍板）**：坏包处理 = 发新版本号 + 旧 Release 正文标注问题，
@@ -32,9 +30,9 @@
 
 - 插件包根目录 = `01_content/`；本仓库其余目录是项目文档与本地工具。
 - **不替换、不禁用任何官方插件**（ui-sidebar / ui-workspace / ui-layout）。
-- 所有状态只存 localStorage（键 `dsh.worktable.view.v1`），不读写工作区文件。
+- 项目/布局/绑定存 localStorage，媒体存 IndexedDB；文件窗、mkdir 与产物握手会读写用户配置的项目目录，权限边界见 `01_content/README.md`。
 - dsh-travelatlas 是入驻项目而非本仓库的一部分；协议见 `02_process/PRD.md` §5.3/5.4。
-- **平台边界**：Windows 是当前完整验证平台；macOS 为实验性支持（核心文件路径代码已做跨平台适配，
+- **平台边界**：Windows 网页端已测范围见 `01_content/README.md`，不宣称全功能验收；桌面仅列已测 Windows 0.2.0-rc.2 范围；macOS 为实验性支持（核心文件路径代码已做跨平台适配，
   尚未真机端到端验证）。路径拼接必须走 `pathutil.ts` helper 或 Node `path` API，不手写分隔符。
 
 ## 构建与验证
@@ -55,14 +53,15 @@ node --check lib/index.js
   正则闭合斜杠被吞，bundle 直接 `node --check` 失败）。要改产物只能 `npm run build` 重建；
   应急用 `Copy-Item` 字节级还原备份。构建后必跑 `node --check lib/client.js`。
 - **发布打包唯一入口 = `npm run pack`（01_content/release-prep.mjs）**：身份断言（package/manifest/cordis.patch.yml 严格结构）→
-  版本一致性 → 构建（cwd 固定 01_content）→ node --check → npm pack → 结构清单断言（package/ 前缀 + 精确 7 文件，
+  版本一致性 → **会话/输入/传输/挂载回归**（test:input / test:session / test:details / test:transport / test:widget 共 98 项，评估源码契约）→ 构建（cwd 固定 01_content）→ node --check → npm pack → 结构清单断言（package/ 前缀 + 精确 7 文件，
   无 src/、无 .map）→ 独立临时目录 npm install + import() 断言（apply 函数/inject 含 webServer+sessions/name/
   HEALTH_PATH/包内双 bundle 版本）→ **客户端工厂求值门禁**（ModuleLoader 恰好注册一次 + ID 校验 + 精确外部依赖
   白名单 react/react/jsx-runtime + apply/inject 断言）→ **分栏锚点 DOM 回归**（8 场景，评估安装产物 lib/client.js；
-  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 同目录工作区归属对话）→ **窗格恢复回归**（5 场景：关闭留档 / 原样恢复 / 存量救援回填 / 无清单产物候选）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **项目存档防丢失回归**（6 例：主键正常 / 主键缺失→备份恢复 / 主键损坏可救与只读 / 真·新装 / 备份写入决策 / 备份自愈；评估安装产物 lib/client.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
+  测试接受包路径参数）→ **主视图会话切换兼容回归**（5 场景：0.1.6 uiWorkspace / 老宿主 sessions.open / 两通道优先级 / 无通道静默 / pickProjectSession 四判）→ **窗格恢复回归**（3 场景：关闭留档 / 原样恢复 + 未命中无操作 / 活通道闭环）→ **项目会话联动回归**（6 例：列表过滤 / 决策三分支 / 并发去重 / 失败静默；评估安装产物 lib/client.js）→ **项目存档防丢失回归**（6 例：主键正常 / 主键缺失→备份恢复 / 主键损坏可救与只读 / 真·新装 / 备份写入决策 / 备份自愈；评估安装产物 lib/client.js）→ **服务端数据目录回归**（3 组场景，评估安装产物 lib/index.js）→ dist/v版本号/ 双资产（终态恰好 2 文件 + 双 SHA 同源）。
   脚本零 git/gh 动作，发布上传由 gh 手动完成。
   **发布禁止裸 npm pack 或手工 tar 生成发布包**；脚本从仓库任意目录调用均安全（以自身位置解析）。
 - **配套检查入口**：`npm run test:gate` = 工厂门禁 10 个失败/正向用例；
+  `npm run test:widget` = 项目/会话归属、共目录、延迟结果与补挂重试 26 项回归（执行实际函数，不等于模型生成端到端验收）；
   `node 04_test/anchor-dom.test.mjs [lib/client.js 路径]` = 分栏锚点 8 场景（缺省用工作目录构建产物）；
   `node 04_test/session-switch-compat.test.mjs [lib/client.js 路径]` = 主视图会话切换 5 场景
   （0.1.6 无 sessions.open → uiWorkspace；老宿主回落 sessions.open；两通道优先级；无通道静默；
@@ -85,6 +84,15 @@ node --check lib/index.js
   防「双资产同错」；tag 模式断言 tag==='v'+包内版本。
 
 ## 领域约定（会话中必须遵守）
+
+| 实现参考 | 对应材料 |
+| --- | --- |
+| 控制室 UI、预设/模型、提醒、产物握手、更新状态 | `02_process/PRD.md` §14（修改对应组件时对照源码，不以历史 API 示例替代新旧桥接） |
+
+- **Desktop 兼容边界**：0.4.0 保留客户端 platform=web（Desktop 0.2.0-rc.2 也按此契约加载）。终端 WebSocket 经 `hostTransport.ts` 使用宿主 `__DSH_TRANSPORT__.streamBaseUrl`，不能由 dsh-app://app 拼 ws://app；更新提示须指向 desktop profile 与桌面端自带 CLI，不能修改 web profile。页面点测与源码回归不能替代完整桌面端业务验收，不宣称桌面全功能兼容。
+- **0.3.4 网页端兼容**：声明已测版本 0.1.1-rc.2 / 0.1.2-rc.1 / 0.2.0-rc.2，不外推 Desktop 或未测宿主。当前会话走 `currentSessionOf`（旧 current / 新 mainView），导航走 `openHostSession`（新 uiWorkspace / 旧 sessions.open），标注走 `appendHostInput`。Cordis 可选服务用 `ctx.get` 探测；返回 undefined 后不得再访问未 inject 的同名属性。旧 current 契约的引用坐标是显示文本位置，新 mainView 契约按单字符 chip 投影；不得因旧版也有 input.for 就误用新版坐标。`npm run test:input` 为 15 项定向回归。
+- **0.2 会话状态/发送**：可选订阅 `uiSession.sessionStatus`，只读归一化列表与 subagentCatalog；completionUnread 不是任务成功证明，打开主会话会清除。已观察到的 running→false 供原产物握手使用，下一轮 running 清除；停止不等于成功。新会话发送通过 `sessions.using` 临时持有，等待 ready 后发送并由宿主释放；业务拒绝/超时不得再换通道重发。`npm run test:session` 为 20 项回归；0.2.0-rc.2 已实测短文本发送/回复，真实待决/子代理仍未验收。
+- **0.2 新建/预览/选择接口**：`createHostSession` 必须区分显式未分组（第四参数 `none`）与隐式默认（`auto`）。自定义窗口显式未分组仅传 cwd（无目录则空选项），禁止注册/复用工作区或 initializeDefault；新版控制室空未分组会话输入区禁用，必须提示并阻止创建，由用户选组/加入可用现有会话，不偷偷改组、不发激活消息。现有分组未选 ID 同样拒绝；显式现有/新建组才传 workspaceId。分组列表晚返回不得覆盖用户已选分组。隐式默认保留此前工作区兜底，旧宿主保留原分支，不移动既有会话。预览读临时持有的 eventSource，模型目录在持有期间使用，结束即释放；预设接 remote.agentPresets。`npm run test:details` 为 30 项回归，含两处真实调用接线与延迟默认分组；不能替代真实输入区/模型会话验收。
 
 - **窗口编号**：用户说「窗口1/2/3…」指布局里按「左栏 → 顶行 → 主行」顺序的第 N 个内容窗。
   例：田字格预设（g4）窗口1/2 = 顶行左右、窗口3/4 = 底行左右；l13 窗口1 = 顶部大窗，
@@ -121,14 +129,7 @@ node --check lib/index.js
   跳过归档与子代理，优先已载入会话；找不到同目录工作区 = 不切换）。自动解析**不写盘**
   （保持未绑定语义，每次打开重解析；要固定请显式绑定）。回归：
   `node 04_test/session-switch-compat.test.mjs`（第 5 例）。
-  **切换一律走 openMainSession 兼容层（0.1.6 红线）**：0.1.6-alpha.2 起宿主移除了
-  `ctx.sessions.open`，`sessions.list` 快照也不再带 `current`；主视图切换改由 uiWorkspace
-  服务负责（`ctx.get('uiWorkspace').openSession(id)` → replaceMain → selection 快照，
-  持久化键 dsh.sessions.current）。新宿主优先 uiWorkspace、老宿主回落 sessions.open +
-  list.current，并额外订阅 uiWorkspace.selection（主视图切换不一定经 sessions.list 通知）。
-  **禁止再直接调 sessions.open 或读快照 current**——0.1.6 上是静默空操作，症状：
-  切换项目室后右侧对话/任务不跟着切、当前会话恒为空（openMainSession/currentMainSessionId
-  是唯一入口）。回归：`node 04_test/session-switch-compat.test.mjs`。
+  **会话切换统一走上游 sessionCompat（2026-10-14 合并定案）**：新增/切换主视图一律经 `openHostSession(ctx, sessions, id)`（新宿主 uiWorkspace / 老宿主 sessions.open 都在里面）、`currentSessionOf(snapshot)`（0.1 的 list.current / 0.2 的 mainView）、`sendHostSession`（0.2 临时持有发送）。本地保留的 `openMainSession`/`currentMainSessionId` 只是薄壳（旧调用点不改名），**不得再新增自研通道**。回归：`node 04_test/session-compat.test.mjs` + `node 04_test/session-switch-compat.test.mjs`。
 - **项目×对话联动**：打开项目记录「打开前会话」（projectAttachRef.sessionId）；项目打开期间切到
   非绑定会话 = 自动关项目（suppressRestoreRef 跳过回切）；✕/反选关项目 = 回切「打开前会话」。
   未绑定项目的归属会话 = 打开前会话。
@@ -177,43 +178,23 @@ node --check lib/index.js
   放进该文件夹」指令——用户要求项目产出文件不得落到默认位置。
 - **窗口任务提示词**：buildWindowTaskText 统一组装（窗口身份「项目+窗口N」+ 项目文件夹 +
   插件知识包）；知识包注明「不要重新侦察插件源码」，改提示词时保持这个原则。
-- **自动挂载（widget-result.json 握手）**：提示词第 5 条要求 agent 完成后用一句话
-  告知用户挂载结果（不提问、不等确认，例：「已自动挂到窗口N，想调整直接说」）；
-  第 6 条要求 agent 完成后在项目文件夹写
-  widget-result.json {window:'窗口N', path, kind:html|url|file}；客户端监听绑定会话 completed →
-  buildMountContent 转换产物 → 项目开着直接 openTab 进「窗口N」（windowLabelToPane 按窗口
-  编号规则定位），项目没开暂存 pendingMountRef（localStorage，打开项目时补挂）；
-  mountConsumedRef 保证一次完成只消费一次。
-  **锁死语义**：挂载用 splitStore.lockPane——清空该窗格原有标签，把产物作为唯一固定标签
-  （active 0），onSpecMutated 立即持久化；用户下次打开工作台窗口直接显示产物，不丢失不重置。
-  待挂载记录带 {content,row,index}，补挂同样 lockPane。
-  **清单缓存与订阅**：`readWidgetManifest(pid, folder, force)`（force = 重读盘；'' = 确认无清单）
-  + `widgetListeners/notifyWidgets`（自愈扫挂、自动挂载后触发）——📦 清单与存量救援回填共用。
-  📦 单条挂载复用 applyWidgetManifest 后必须写回**整份清单**指纹（recordMountedWidget(pid, 全文)），
-  否则自愈扫挂会误判「清单变了」而重挂全部窗口、覆盖用户手动调整。
+- **产物自动挂载 v2（2026-10-14 合并上游 v0.4.0 握手）**：`prepareWidgetTask` 生成 `WidgetBinding`（projectId/paneId/bindingId/window），窗口任务提示词第 6 条要求 agent 把结果写到 `widgetManifestPath(binding)` 指向的文件（内容含 version/projectId/paneId/bindingId/path/kind）；客户端经 `widgetRegistry` 归属校验后才挂载：项目没开着记入 `pendingMountRef`（localStorage `dsh.worktable.pendingMount.v2`），下次打开重读复验；成功才清待办，失败保留重试。**锁死语义**：挂载用 splitStore.lockPane——清空该窗格原有标签，把产物作为唯一固定标签（active 0），onSpecMutated 立即持久化。**禁止按文件夹认项目、禁止扫旧根清单、禁止回退窗口1**（`widgetMount.ts` 校验）。
 - **窗格内容恢复（v0.3.4）**：标签 ✕ 关闭时 closeTab 把原标签（原 id/标题/内容）压入该窗格
   `closedTabs`（≤5、最近在前、随 spec 持久化）→ 标签关空后选择器顶部渲染「↩ 恢复：<标题>」
   （最多 3 条）→ restoreClosedTab 原样放回并移出历史。**无操作必须是真无操作**：窗格变更统一走
   `mutatePane`（窗格不存在或返回同一对象 = null），否则「未命中历史」也会触发 onSpecMutated/persist。
-  **存量救援回填**：项目打开/插件加载时，widget-result.json 里指向「空窗格」的产物经
-  seedPaneRestore（纯函数）/splitStore.seedRestore 登记为可恢复项——只登记、不挂载、不覆盖非空窗格；
-  专治「标签已经关掉、历史为空」的存量情况。非 AI 类标签（网址/终端/文件夹）只在关闭后可从历史恢复。
+ 非 AI 类标签（网址/终端/文件夹）只在关闭后可从历史恢复。
   回归：`node 04_test/pane-restore.test.mjs`。
-- **分栏标题栏产物清单（📦，v0.3.4）**：项目打开时标题栏右侧渲染 📦 按钮（清单为空 = 整块不渲染）；
-  env.widgets 注入 {list/subscribe/mount}（index.tsx 读 widget-result.json 组装，引擎不含业务逻辑，
-  与 env.console/env.custom 同构）。弹层每行 = 窗口N + 产物名；点击 = 挂到该窗口（lockPane 语义，
-  可反复挂）；目标窗口不在当前布局 → 置灰 + 「当前布局里没有这个窗口」。
-- **按窗格选产物（v0.3.4，窗格选择器里的「📦 产物」）**：任何空窗格的选择器都会列出**本项目的产物**
-  （env.widgets.products / mountProduct；点一下 = lockPane 到**本窗格**），不再受清单声明的窗口限制。
-  数据源两段：① 有 `widget-result.json` → 列清单全部条目（key `m:<i>`）；
-  ② **无清单** → `scanHtmlProducts` 扫项目文件夹（顶层 + 一层子目录，跳过 .dsh/.git/node_modules）
-  的 `.html` 候选（纯函数 `htmlProductCandidates`，最多 12 条，key `f:<绝对路径>`）——专治像
-  AI学习 这类「有产物、没清单」的项目（其产物在 `widget/index.html` 与 `widget/knowledge-lab.html`）。
-  候选缓存 `productCache`（notifyWidgets 时失效）；选择器最多展示 6 条（PRODUCT_SHOW）。
-  回归：`node 04_test/pane-restore.test.mjs`（第 5 例 = htmlProductCandidates 过滤/层级/封顶）。
+
+
 - **原生皮肤模板**：01_content/template/dshell.css + dshell.html（esbuild text loader 嵌入服务端
   bundle，/api/worktable/template 路由下发）；知识包要求产出 HTML 一律引用该样式表，组件类
   参考模板。新增组件样式只加到 dshell.css，保持单一来源。
+- **新会话策略**：创建后应用默认预设与有效模型；桥接保持原选择策略，持有结束即释放。失败不重复发送；插件导航须 markPluginSessionOpen，未绑定项目成功任务会 autoBind。
+- **项目文件夹**：保存要求绝对路径，mkdir 非 2xx 必须中止；自定义任务带项目 cwd，产出落该目录。
+- **窗口任务**：buildWindowTaskText 统一携带窗口身份/项目目录/通用知识；不重复侦察插件源码。
+- **产物握手 v2**：目录不是项目身份。`widgetMount.ts` 校验 projectId/paneId/bindingId，禁止扫旧根清单或回退窗口1。提示词与完成读取限本会话；补挂重读并复验归属，成功后才清待办。手工关闭/替换撤销关联，追改可复用，完成不证明成功。协议见 PRD §14。
+- **原生皮肤**：template/dshell.css + dshell.html 为单一来源，经 /api/worktable/template 下发；新增样式只加模板。
 - **提示词零泄漏（硬约束）**：所有对外生成的提示词（buildWindowTaskText 窗口任务提示词、
   buildCustomLayoutPrompt 剪贴板布局提示词）禁止写入用户的个人工作区分组名（如 Projects /
   DeepseekHarness）、其他用户的项目名与私人路径。剪贴板提示词会发给别人的 DSH，必须只含
@@ -314,12 +295,15 @@ node --check lib/index.js
   Release 必须同时附固定名资产 `dsh-worktable.tgz`（供 releases/latest/download 永久链接）
   与版本化资产。版本注入：build.mjs 把 package.json version 打进 __WT_VERSION__，发版前
   改 version 再构建；升级动作（执行 add + 重启）永远留给用户或其 Agent，插件不自更新。
+- **提醒红线**：need > done > busy，聚合父/子会话。ack 只存 opaque key/kind，不存正文；身份更换重新亮，读取副本与持久化同步清理，确认先记已见身份；旧无 key 退路无法识别直接替换。
+- **控制室红线**：wt-console 固定首位、不可删除、唯一 console 标签不可关；隐藏项目不入网格。状态/计时/预览只镜像宿主，不为计时激活冷会话，不把完成标记当成功证明；业务临时持有结束释放。
+- **更新检查/发布**：设置与控制室检查暂未去重，共用 updateCheck/lastUpdateCheck/skipVersion.v1，updateCache.v1 仅控制室。单次 8s、最多 3 次尝试；失败不可报最新。版本从 package.json 构建注入；新版本需 tag+Release，双资产固定名 dsh-worktable.tgz + 版本化名同 SHA。插件仅提示不自升级，安装/重启留给用户。
 
-## 宿主升级事故（0.1.1-rc.2 link 插件回归，备忘）
+## 旧版 link 加载兼容边界
 
-- rc.2 的 loader 对裸包名走原生 ESM import()，link: 插件找不到 profile 里的 peer 依赖 → 启动即崩。
-  临时修复：junction `E:\AI_Workspace\DeepseekHarness\node_modules` → `C:\Users\SJL\.dsh\profiles\node_modules`。
-  **上游 loader 修复后必须删除该 junction**（双解析叠加）。peerDependencies 全部 `"*"` + optional 已核查（干净）。
+- 特定旧版 0.1.1-rc.2 的裸包 import / link peer 解析曾使用上级 node_modules junction 兜底，不是通用修法。
+  本机 0.2.0-rc.2 经无旧链接冷启动与真实工作台/控制室检查后已移除该链接，原目标目录保留。
+  重新遇到加载失败时先查实际宿主、profile、插件及第一条完整错误；不得直接创建更高层级链接或删除它指向的依赖目录。
 
 ## 宿主 bug 跟踪（UTF-16 路径截断）
 
@@ -331,5 +315,6 @@ node --check lib/index.js
 
 - 注册：`dsh plugin --profile web add "link:<repo>/01_content"`（写 ~/.dsh，需用户授权）。
 - 发布版安装（给用户）：`dsh plugin --profile web add "https://github.com/Aisland-SJL/dsh-worktable/releases/latest/download/dsh-worktable.tgz"`（依赖每个 Release 的固定名资产）。
-- bundle 层只在启动时组合：改动后必须重启 dsh web 并刷新 GUI。
+- Desktop：用实际安装目录 resources/runtime/cli/bin/dsh.cmd 对 desktop profile 安装；不得以网页 CLI 或不固定 npx 替代。安装前用户完整退出，安装后用户手动重开。
+- bundle 启动时组合：网页重启 dsh web 并刷新；桌面完整退出/手动重开。不得自动重启正式宿主。
 

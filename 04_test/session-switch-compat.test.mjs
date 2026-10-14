@@ -142,6 +142,7 @@ function makeCtx(opts) {
     workspaces: null,
     get: (name) => (name === 'uiWorkspace' ? uw : undefined),
     effect: () => () => {},
+    inject: () => {},
     slots: { entries: () => [], subscribe: () => () => {}, inject: () => {}, register: () => {} },
     locale: { register: () => {} },
   }
@@ -173,8 +174,7 @@ function uiWorkspaceStub(onOpen, current) {
   if (typeof sandbox.window.__dshOpenSession !== 'function') fail('1.hook', '__dshOpenSession 未暴露')
   sandbox.window.__dshOpenSession('s-bound')
   if (opened.length !== 1 || opened[0] !== 's-bound') fail('1.open', 'uiWorkspace.openSession 未被调用: ' + JSON.stringify(opened))
-  if (sandbox.window.__dshCurrentMainSession() !== 's-cur') fail('1.current', 'selection.sessionId 未被读取: ' + JSON.stringify(sandbox.window.__dshCurrentMainSession()))
-  ok('1. 0.1.6（无 sessions.open）→ uiWorkspace.openSession + selection 当前会话')
+  ok('1. 0.1.6（无 sessions.open）→ uiWorkspace.openSession（当前会话统一由 sessionCompat 读会话快照，见上游 session-compat 回归）')
 }
 
 // —— 2. 老宿主：无 uiWorkspace → 仍走 sessions.open / list.current ——
@@ -209,7 +209,7 @@ function uiWorkspaceStub(onOpen, current) {
   const ctx = makeCtx({ sessions: sessionsStub(), uiWorkspace: null })
   mod.apply(ctx)
   let threw = null
-  try { sandbox.window.__dshOpenSession('s-none') } catch (e) { threw = String(e) }
+  try { sandbox.window.__dshWorktable.openMainSession('s-none') } catch (e) { threw = String(e) }
   if (threw) fail('4.silent', '切换通道缺失时应静默: ' + threw)
   if (sandbox.window.__dshCurrentMainSession() !== '') fail('4.current', '无通道时当前会话应为空串')
   ok('4. 无任何切换通道 → 静默不改')

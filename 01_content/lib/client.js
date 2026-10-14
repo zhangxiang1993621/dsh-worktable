@@ -7540,7 +7540,6 @@ __export(index_exports, {
   applyProjectOpen: () => applyProjectOpen,
   createCustomSession: () => createCustomSession,
   decideProjectOpen: () => decideProjectOpen,
-  htmlProductCandidates: () => htmlProductCandidates,
   inject: () => inject,
   listProjectSessions: () => listProjectSessions,
   normProjectFolder: () => normProjectFolder,
@@ -8429,6 +8428,7 @@ var css = xterm_default + "\n" + [
   ".dsh-wt_consoleSelect,.dsh-wt_consoleInput{width:100%;box-sizing:border-box;padding:6px 8px;background:var(--dsw-alias-fill-l1,rgba(255,255,255,.03));border:1px solid var(--dsw-alias-border-l1,#262b36);border-radius:8px;color:var(--dsw-alias-label-primary,#e6e8eb);font:inherit;font-size:11.5px;line-height:16px;outline:none}",
   ".dsh-wt_consoleSelect:focus,.dsh-wt_consoleInput:focus{border-color:var(--dsw-alias-state-accent-primary,#4f8ef7)}",
   ".dsh-wt_consoleErr{margin:0;font-size:11px;line-height:16px;color:var(--dsw-alias-state-danger,#f85149)}",
+  ".dsh-wt_consoleHint{margin:0;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary,#aab6cd)}",
   ".dsh-wt_consoleCreateBtn{margin-top:2px;padding:7px 10px;border:1px solid var(--dsw-alias-state-accent-primary,#4f8ef7);border-radius:8px;background:transparent;color:var(--dsw-alias-state-accent-primary,#4f8ef7);font:inherit;font-size:12px;line-height:18px;cursor:pointer}",
   ".dsh-wt_consoleCreateBtn:hover:not(:disabled){background:var(--dsw-alias-fill-l1,rgba(255,255,255,.05))}",
   ".dsh-wt_consoleCreateBtn:disabled{opacity:.55;cursor:default}",
@@ -8626,6 +8626,8 @@ var zh = {
   "console.groupNone": "\u65E0\u5206\u7EC4\uFF08\u7528\u9879\u76EE\u6587\u4EF6\u5939\uFF09",
   "console.groupExisting": "\u52A0\u5165\u73B0\u6709\u5206\u7EC4",
   "console.groupNew": "\u65B0\u5EFA\u5206\u7EC4",
+  "console.chooseGroup": "\u9009\u62E9\u5206\u7EC4\u2026",
+  "console.blankNeedsGroup": "\u5F53\u524D DSH \u7684\u672A\u5206\u7EC4\u7A7A\u5BF9\u8BDD\u65E0\u6CD5\u8F93\u5165\uFF0C\u8BF7\u9009\u62E9\u5206\u7EC4\u6216\u52A0\u5165\u73B0\u6709\u5BF9\u8BDD\u3002",
   "console.newParentPh": "\u5206\u7EC4\u7236\u76EE\u5F55\uFF0C\u4F8B\u5982 E:\\AI_Workspace",
   "console.newNamePh": "\u5206\u7EC4\u6587\u4EF6\u5939\u540D\uFF08\u5C06\u521B\u5EFA\u5E76\u6CE8\u518C\uFF09",
   "console.createBind": "\u65B0\u5EFA\u5E76\u7ED1\u5B9A",
@@ -8708,7 +8710,8 @@ var zh = {
   "update.copied": "\u5DF2\u590D\u5236",
   "update.copyFail": "\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u624B\u52A8\u9009\u62E9\u6587\u672C",
   "update.skipDone": "\u5DF2\u5FFD\u7565\u6B64\u7248\u672C\uFF08\u4E0B\u4E00\u7248\u53D1\u5E03\u65F6\u518D\u63D0\u9192\uFF09",
-  "update.upgradeHint": "\u6267\u884C\u547D\u4EE4\u540E\u9700\u91CD\u542F dsh web \u5E76\u5237\u65B0\u9875\u9762"
+  "update.upgradeHint": "\u6267\u884C\u547D\u4EE4\u540E\u9700\u91CD\u542F dsh web \u5E76\u5237\u65B0\u9875\u9762",
+  "update.upgradeHintDesktop": "\u8BF7\u4F7F\u7528\u684C\u9762\u7AEF\u81EA\u5E26 CLI\uFF1B\u5B89\u88C5\u524D\u5B8C\u6574\u9000\u51FA\uFF0C\u5B8C\u6210\u540E\u624B\u52A8\u91CD\u65B0\u6253\u5F00\u684C\u9762\u7AEF"
 };
 var en = {
   "title": "Worktable",
@@ -8877,6 +8880,8 @@ var en = {
   "console.groupNone": "No group (use project folder)",
   "console.groupExisting": "Join existing group",
   "console.groupNew": "New group",
+  "console.chooseGroup": "Choose a group\u2026",
+  "console.blankNeedsGroup": "Blank ungrouped chats cannot accept input in this DSH. Choose a group or join an existing chat.",
   "console.newParentPh": "Group parent folder, e.g. E:\\AI_Workspace",
   "console.newNamePh": "Group folder name (created & registered)",
   "console.createBind": "Create & bind",
@@ -8959,7 +8964,8 @@ var en = {
   "update.copied": "Copied",
   "update.copyFail": "Copy failed \u2014 select the text manually",
   "update.skipDone": "Skipped (will remind on the next release)",
-  "update.upgradeHint": "Run the command, then restart dsh web and refresh"
+  "update.upgradeHint": "Run the command, then restart dsh web and refresh",
+  "update.upgradeHintDesktop": "Use the Desktop bundled CLI; fully quit before installing, then reopen Desktop manually"
 };
 var NS = "worktable";
 
@@ -8994,8 +9000,80 @@ function basenameOf(p) {
 // src/client/split.tsx
 var import_react = require("react");
 
+// src/client/hostTransport.ts
+function hostWebSocketUrl(path, surface = {
+  href: location.href,
+  protocol: location.protocol,
+  streamBaseUrl: globalThis.__DSH_TRANSPORT__?.streamBaseUrl
+}) {
+  const desktop = surface.protocol === "dsh-app:";
+  if (desktop && !surface.streamBaseUrl) throw new Error("Desktop Host stream URL unavailable");
+  const url = new URL(path, desktop ? surface.streamBaseUrl : surface.href);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Unsupported Host transport protocol: " + url.protocol);
+  }
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
+}
+function worktableUpgrade(protocol = typeof location === "undefined" ? "http:" : location.protocol) {
+  const desktop = protocol === "dsh-app:";
+  const command = "dsh plugin --profile " + (desktop ? "desktop" : "web") + ' add "https://github.com/Aisland-SJL/dsh-worktable/releases/latest/download/dsh-worktable.tgz"';
+  const prompt = desktop ? "\u5E2E\u6211\u5347\u7EA7 dsh-worktable\u3002\u6211\u5F53\u524D\u4F7F\u7528\u5B98\u65B9\u684C\u9762\u7AEF\uFF1A\u5148\u5B9A\u4F4D\u8BE5\u684C\u9762\u7AEF\u81EA\u5E26\u7684 dsh CLI \u5E76\u51C6\u5907\u66F4\u65B0\uFF0C\u518D\u63D0\u9192\u6211\u5B8C\u6574\u9000\u51FA\u684C\u9762\u7AEF\u3002\u786E\u8BA4\u9000\u51FA\u540E\u4F7F\u7528\u8BE5 CLI \u6267\u884C " + command + "\u3002\u4E0D\u8981\u4F7F\u7528\u7F51\u9875\u7AEF CLI\uFF0C\u4E0D\u8981\u4FEE\u6539 web profile\uFF0C\u4E0D\u8981\u81EA\u52A8\u6740\u8FDB\u7A0B\u6216\u91CD\u542F\uFF1B\u5B8C\u6210\u540E\u63D0\u9192\u6211\u624B\u52A8\u91CD\u65B0\u6253\u5F00\u684C\u9762\u7AEF\u3002" : "\u5E2E\u6211\u5347\u7EA7 dsh-worktable\uFF1A\u6267\u884C " + command + "\uFF0C\u5B8C\u6210\u540E\u63D0\u9192\u6211\u91CD\u542F dsh web \u5E76\u5237\u65B0\u9875\u9762";
+  return { command, prompt, desktop };
+}
+
 // src/client/changelog.ts
-var CHANGELOG_V030 = `\u66F4\u65B0\u516C\u544A \xB7 v0.3.3
+var CHANGELOG_V030 = `\u66F4\u65B0\u516C\u544A \xB7 v0.4.0
+
+\u{1F5A5}\uFE0F \u7F51\u9875\u7AEF\u4E0E Windows \u684C\u9762\u7AEF\u9002\u914D\uFF0C\u4FEE\u590D\u9879\u76EE\u5185\u5BB9\u4E32\u6302
+
+\u3010\u53CC\u7AEF\u4F7F\u7528\u3011\u540C\u4E00\u4E2A\u5DE5\u4F5C\u53F0\u63D2\u4EF6\u5305\u652F\u6301\u7F51\u9875\u7AEF\u4E0E\u5B98\u65B9 Windows \u684C\u9762\u7AEF\u3002\u5EF6\u7EED v0.3.4 \u5BF9 DSH 0.2 \u7F51\u9875\u7AEF\u7684\u9879\u76EE\u4E0E\u5BF9\u8BDD\u8054\u52A8\u3001\u6807\u6CE8\u8F93\u5165\u3001\u63A7\u5236\u5BA4\u72B6\u6001\u53CA\u6D88\u606F\u9884\u89C8\u9002\u914D\uFF0C\u672C\u6B21\u8865\u4E0A\u684C\u9762\u7AEF\u8FDE\u63A5\u4E0E\u5347\u7EA7\u5165\u53E3\u3002
+
+\u3010\u684C\u9762\u7AEF\u7EC8\u7AEF\u4E0E\u66F4\u65B0\u3011\u7EC8\u7AEF\u4F7F\u7528\u684C\u9762\u5BBF\u4E3B\u63D0\u4F9B\u7684\u8FDE\u63A5\u5730\u5740\uFF0C\u7F51\u9875\u7AEF\u4FDD\u7559\u539F\u8FDE\u63A5\u65B9\u5F0F\u3002\u66F4\u65B0\u63D0\u793A\u4F1A\u6309\u6240\u5728\u73AF\u5883\u9009\u62E9 web \u6216 desktop \u914D\u7F6E\uFF1B\u684C\u9762\u7528\u6237\u8BF7\u4F7F\u7528\u5E94\u7528\u81EA\u5E26\u7684 CLI\uFF0C\u5B8C\u6574\u9000\u51FA\u540E\u5B89\u88C5\uFF0C\u518D\u624B\u52A8\u91CD\u65B0\u6253\u5F00\u3002
+
+\u3010\u4FDD\u7559\u201C\u672A\u5206\u7EC4\u201D\u9009\u62E9\u3011\u81EA\u5B9A\u4E49\u7A97\u53E3\u65B0\u5EFA\u5BF9\u8BDD\u65F6\uFF0C\u9009\u62E9\u201C\u672A\u5206\u7EC4\u201D\u5C31\u4FDD\u6301\u672A\u5206\u7EC4\uFF0C\u9879\u76EE\u6587\u4EF6\u5939\u4EC5\u4F5C\u4E3A\u5DE5\u4F5C\u76EE\u5F55\u3002\u4FEE\u590D\u9ED8\u8BA4\u5206\u7EC4\u665A\u8FD4\u56DE\u65F6\u8986\u76D6\u7528\u6237\u9009\u62E9\u7684\u95EE\u9898\uFF1B\u5DF2\u6709\u5BF9\u8BDD\u7684\u5206\u7EC4\u4FDD\u6301\u539F\u6837\u3002
+
+\u3010\u63A7\u5236\u5BA4\u65B0\u5EFA\u5BF9\u8BDD\u3011\u5DF2\u6D4B DSH 0.2 \u7684\u672A\u5206\u7EC4\u7A7A\u5BF9\u8BDD\u65E0\u6CD5\u4F7F\u7528\u539F\u751F\u8F93\u5165\u6846\uFF0C\u63A7\u5236\u5BA4\u4F1A\u63D0\u793A\u539F\u56E0\u5E76\u7981\u7528\u8FD9\u4E00\u521B\u5EFA\u65B9\u5F0F\uFF0C\u8BF7\u9009\u62E9\u73B0\u6709/\u65B0\u5EFA\u5206\u7EC4\uFF0C\u6216\u52A0\u5165\u53EF\u7528\u7684\u73B0\u6709\u5BF9\u8BDD\u3002\u9009\u62E9\u201C\u73B0\u6709\u5206\u7EC4\u201D\u4F46\u5C1A\u672A\u9009\u5B9A\u5177\u4F53\u9879\u65F6\uFF0C\u4E5F\u4E0D\u4F1A\u9000\u56DE\u9ED8\u8BA4\u5206\u7EC4\u521B\u5EFA\uFF1B\u65E7\u5BBF\u4E3B\u4FDD\u7559\u539F\u672A\u5206\u7EC4\u521B\u5EFA\u884C\u4E3A\u3002
+
+\u3010\u65B0\u9879\u76EE\u4ECE\u7A7A\u767D\u5F00\u59CB\u3011\u65B0\u9879\u76EE\u5373\u4F7F\u4E0E\u65E7\u9879\u76EE\u540C\u540D\u3001\u4F7F\u7528\u540C\u4E00\u4E2A\u6587\u4EF6\u5939\uFF0C\u4E5F\u4E0D\u4F1A\u81EA\u52A8\u52A0\u8F7D\u65E7\u9879\u76EE\u7684\u7A97\u53E3\u5185\u5BB9\u3002\u81EA\u52A8\u6302\u8F7D\u5206\u522B\u8BC6\u522B\u9879\u76EE\u3001\u7A97\u53E3\u4E0E\u672C\u6B21\u4EFB\u52A1\u7684\u5173\u8054\uFF0C\u4E3A\u5404\u7A97\u53E3\u4F7F\u7528\u4E13\u5C5E\u7ED3\u679C\u6587\u4EF6\uFF1B\u9519\u8BEF\u5F52\u5C5E\u6216\u65E0\u6548\u7A97\u53E3\u7ED3\u679C\u4E0D\u4F1A\u88AB\u585E\u8FDB\u7A97\u53E31\u3002
+
+\u3010\u4E0D\u540C\u5BF9\u8BDD\u4E92\u4E0D\u4E32\u6302\u3011\u540C\u4E00\u9879\u76EE\u7684\u4E0D\u540C\u5BF9\u8BDD\u53EA\u83B7\u5F97\u548C\u66F4\u65B0\u5404\u81EA\u5173\u8054\u7684\u7A97\u53E3\uFF1B\u4E00\u4E2A\u5BF9\u8BDD\u5B8C\u6210\u65F6\uFF0C\u4E0D\u4F1A\u5F3A\u5236\u91CD\u6302\u53E6\u4E00\u5BF9\u8BDD\u7684\u65E7\u7ED3\u679C\u3002\u540C\u4E00\u5BF9\u8BDD\u7EE7\u7EED\u4FEE\u6539\u540C\u540D\u4F5C\u54C1\u65F6\uFF0C\u7A97\u53E3\u4ECD\u53EF\u91CD\u65B0\u52A0\u8F7D\u66F4\u65B0\u540E\u7684\u5185\u5BB9\u3002\u4EFB\u52A1\u63D0\u793A\u8BCD\u8981\u6C42\u786E\u8BA4\u9875\u9762\u5B9E\u9645\u6302\u8F7D\u540E\u518D\u62A5\u544A\u201C\u5DF2\u6302\u8F7D\u201D\uFF0C\u907F\u514D\u53EA\u5199\u51FA\u7ED3\u679C\u6587\u4EF6\u5C31\u62A5\u6210\u529F\u3002
+
+\u3010\u4FDD\u7559\u624B\u5DE5\u8C03\u6574\u4E0E\u8865\u6302\u91CD\u8BD5\u3011\u624B\u5DE5\u5173\u95ED\u3001\u66FF\u6362\u6216\u79FB\u52A8\u6807\u7B7E\uFF0C\u4EE5\u53CA\u66F4\u6362\u76EE\u5F55\u3001\u5E03\u5C40\u6216\u9879\u76EE\u7ED1\u5B9A\u540E\uFF0C\u65E7\u5173\u8054\u4E0D\u4F1A\u7EE7\u7EED\u8865\u6302\u6216\u8986\u76D6\u4F60\u7684\u8C03\u6574\uFF1B\u8FDF\u5230\u7684\u65E7\u8BF7\u6C42\u4E5F\u4F1A\u91CD\u65B0\u6838\u5BF9\u5F52\u5C5E\u3002\u9879\u76EE\u672A\u6253\u5F00\u65F6\u4FDD\u7559\u5F85\u6302\u8F7D\u8BB0\u5F55\uFF0C\u91CD\u65B0\u6253\u5F00\u4F1A\u8BFB\u53D6\u6700\u65B0\u7ED3\u679C\uFF1B\u8BFB\u53D6\u5931\u8D25\u540E\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0B\u6B21\u6253\u5F00\u53EF\u91CD\u8BD5\uFF0C\u6210\u529F\u6302\u8F7D\u540E\u624D\u6E05\u9664\u3002
+
+\u3010\u65E7\u9879\u76EE\u7EE7\u7EED\u4F7F\u7528\u3011\u5DF2\u4FDD\u5B58\u7684\u7A97\u53E3\u3001\u4F5C\u54C1\u3001\u4F1A\u8BDD\u7ED1\u5B9A\u4E0E\u5A92\u4F53\u4FDD\u7559\u3002\u6839\u76EE\u5F55\u65E7 widget-result.json \u4E0D\u518D\u81EA\u52A8\u5BFC\u5165\uFF1B\u65E7\u5BF9\u8BDD\u82E5\u9700\u7EE7\u7EED\u81EA\u52A8\u6302\u8F7D\uFF0C\u8BF7\u4ECE\u76EE\u6807\u7A97\u53E3\u7684\u201C\u81EA\u5B9A\u4E49 \u2192 \u53D1\u9001\u5230\u4F1A\u8BDD\u201D\u53D1\u4E00\u6B21\u9700\u6C42\uFF0C\u5EFA\u7ACB\u65B0\u5173\u8054\u540E\u5373\u53EF\u7EE7\u7EED\u8FFD\u6539\u3002\u65E7\u6587\u4EF6\u4E0D\u81EA\u52A8\u5220\u9664\uFF0C\u6B64\u524D\u8BEF\u6302\u5E76\u4FDD\u5B58\u7684\u6807\u7B7E\u8BF7\u5173\u95ED\u4E00\u6B21\uFF1B\u591A\u4E2A\u4EFB\u52A1\u4E3B\u52A8\u5199\u540C\u4E00\u4E2A\u5B9E\u9645\u4F5C\u54C1\u6587\u4EF6\uFF0C\u6587\u4EF6\u5185\u5BB9\u4ECD\u53EF\u80FD\u4E92\u76F8\u8986\u76D6\u3002
+
+\u3010\u53D1\u5E03\u68C0\u67E5\u8865\u5168\u3011\u589E\u52A0\u684C\u9762\u8FDE\u63A5\u3001\u5206\u7EC4\u9009\u62E9\u3001\u9879\u76EE\u5F52\u5C5E\u3001\u4F1A\u8BDD\u9694\u79BB\u548C\u8865\u6302\u91CD\u8BD5\u56DE\u5F52\uFF0C\u53D1\u5E03\u6D41\u7A0B\u5171\u8FD0\u884C 98 \u9879\u6E90\u7801\u68C0\u67E5\uFF0C\u5E76\u7EE7\u7EED\u6838\u5BF9\u72EC\u7ACB\u5B89\u88C5\u3001\u5BA2\u6237\u7AEF\u52A0\u8F7D\u4E0E\u53CC\u5B89\u88C5\u5305\u4E00\u81F4\u6027\u3002\u8FD9\u4E9B\u68C0\u67E5\u7528\u4E8E\u51CF\u5C11\u53D1\u5E03\u9057\u6F0F\uFF0C\u4E0D\u80FD\u66FF\u4EE3\u771F\u5B9E\u9875\u9762\u548C\u6A21\u578B\u4EFB\u52A1\u9A8C\u6536\u3002
+
+\u3010\u517C\u5BB9\u4E0E\u9A8C\u8BC1\u8303\u56F4\u3011\u7F51\u9875\u7AEF\u517C\u5BB9\u58F0\u660E\u4EC5\u5217 DSH 0.1.1-rc.2\u30010.1.2-rc.1\u30010.2.0-rc.2\uFF1B\u684C\u9762\u7AEF\u8303\u56F4\u4E3A\u5DF2\u6D4B Windows \u5B98\u65B9\u684C\u9762\u7AEF + DSH 0.2.0-rc.2\u3002\u65E7\u7248\u6CBF\u7528\u6B64\u524D\u9875\u9762\u9A8C\u6536\u5E76\u8865\u4EE3\u7801\u56DE\u5F52\uFF0C\u672C\u8F6E\u672A\u91CD\u8DD1\u5B8C\u6574\u65E7\u7248 GUI\uFF1B\u684C\u9762\u4E3B\u8981\u4EA4\u4E92\u5DF2\u70B9\u6D4B\uFF0C\u539F\u5171\u76EE\u5F55\u4E32\u6302\u95EE\u9898\u5DF2\u7531\u7528\u6237\u53CD\u9988\u786E\u8BA4\u4FEE\u590D\uFF0C\u4F46\u672C\u7248\u6700\u7EC8\u5305\u5728\u6B63\u5F0F\u684C\u9762\u7AEF\u7684\u5B8C\u6574\u590D\u9A8C\u3001\u5B9E\u9645\u5BA1\u6279/\u5B50\u4EE3\u7406\u53CA\u6A21\u578B\u751F\u6210\u5230\u81EA\u52A8\u6302\u8F7D\u7684\u5B8C\u6574\u4E1A\u52A1\u9A8C\u6536\u4ECD\u5F85\u5B8C\u6210\u3002macOS \u5C1A\u672A\u771F\u673A\u9A8C\u8BC1\u3002
+
+\u3010\u5347\u7EA7\u4E0E\u6570\u636E\u3011\u7F51\u9875\u7AEF\u548C\u684C\u9762\u7AEF\u7684\u9879\u76EE\u3001\u5E03\u5C40\u3001\u5A92\u4F53\u53CA\u5916\u89C2\u8BBE\u7F6E\u6309\u5404\u81EA\u6D4F\u89C8\u5668\u6765\u6E90\u4FDD\u5B58\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u540C\u6B65\uFF1B\u5171\u7528 DSH_HOME \u4E5F\u4E0D\u610F\u5473\u7740\u8FD9\u4E9B\u754C\u9762\u6570\u636E\u5171\u7528\u3002\u5B89\u88C5\u524D\u5907\u4EFD\u91CD\u8981\u6570\u636E\u5E76\u6838\u5BF9\u5176\u4ED6\u63D2\u4EF6\u517C\u5BB9\u6027\uFF0C\u88C5\u5B8C\u5B8C\u6574\u91CD\u542F\u5BBF\u4E3B\uFF0C\u7F51\u9875\u7AEF\u518D\u5237\u65B0\u9875\u9762\uFF1B\u82E5\u4ECD\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u4FDD\u7559\u7B2C\u4E00\u6761\u5B8C\u6574\u9519\u8BEF\u3002\u672C\u5DE5\u4F5C\u53F0\u5305\u4E0D\u5305\u542B\u5BBF\u4E3B\u6A21\u578B\u8BF7\u6C42 HTTP 400 \u7684\u4FEE\u590D\uFF1B\u516C\u5F00\u53D1\u5E03\u72B6\u6001\u4EE5 GitHub Release \u4E3A\u51C6\u3002
+
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+\u6B64\u524D\u7248\u672C\u8BF4\u660E\uFF08v0.3.4\uFF09
+
+\u{1F6E0}\uFE0F \u672C\u6B21\u66F4\u65B0\uFF1A\u9002\u914D DSH 0.2 \u7F51\u9875\u7AEF
+
+\u3010\u9879\u76EE\u4E0E\u4F1A\u8BDD\u8054\u52A8\u3011\u63A5\u5165\u65B0\u7248 DSH \u7684\u4F1A\u8BDD\u8BC6\u522B\u4E0E\u8DF3\u8F6C\u63A5\u53E3\uFF0C\u9002\u914D\u6253\u5F00\u7ED1\u5B9A\u9879\u76EE\u3001\u5173\u95ED\u9879\u76EE\u540E\u56DE\u5230\u539F\u4F1A\u8BDD\u3001\u63A7\u5236\u5BA4\u5361\u7247\u8DF3\u8F6C\u7B49\u5165\u53E3\uFF0C\u4E0D\u66FF\u6362\u5BBF\u4E3B\u5B98\u65B9\u7EC4\u4EF6\u3002
+
+\u3010\u65B0\u5EFA\u5BF9\u8BDD\u3011\u4FEE\u590D\u65B0\u7248 DSH \u4E2D\u53EA\u8BBE\u7F6E\u9879\u76EE\u8DEF\u5F84\u521B\u5EFA\u4F1A\u8BDD\uFF0C\u53EF\u80FD\u51FA\u73B0\u300C\u5BF9\u8BDD\u80FD\u6253\u5F00\uFF0C\u5374\u65E0\u6CD5\u8F93\u5165\u300D\u7684\u95EE\u9898\u3002\u65B0\u5EFA\u65F6\u5148\u901A\u8FC7\u5BBF\u4E3B\u767B\u8BB0\u6216\u590D\u7528\u5DE5\u4F5C\u533A\uFF0C\u518D\u521B\u5EFA\u4F1A\u8BDD\uFF1B\u9884\u8BBE\u4E0E\u6A21\u578B\u9009\u62E9\u4E5F\u63A5\u5165\u65B0\u7248\u63A5\u53E3\u3002\u6B64\u6539\u52A8\u4E0D\u81EA\u52A8\u8FC1\u79FB\u5DF2\u6709\u4F1A\u8BDD\u3002
+
+\u3010\u6807\u6CE8\u8F93\u5165\u3011\u9002\u914D\u65B0\u7248\u804A\u5929\u8F93\u5165\u6846\uFF0C\u901A\u8FC7\u5BBF\u4E3B\u63A5\u53E3\u8FFD\u52A0\u6807\u6CE8\uFF0C\u4FDD\u7559\u5DF2\u6709\u8349\u7A3F\u4E0E\u6587\u4EF6\u5F15\u7528\uFF0C\u4E0D\u81EA\u52A8\u53D1\u9001\uFF1B\u65E0\u6CD5\u5199\u5165\u65F6\u4ECD\u53EF\u590D\u5236\u5230\u526A\u8D34\u677F\u3002\u4FEE\u590D\u65E7\u7248\u5DF2\u6709\u6587\u4EF6\u5F15\u7528\u65F6\u8FFD\u52A0\u4F4D\u7F6E\u8BA1\u7B97\u9519\u8BEF\u7684\u95EE\u9898\uFF1B\u65E7\u7248\u8F93\u5165\u6846\u4FDD\u7559\u517C\u5BB9\u5206\u652F\uFF0C\u4E0D\u518D\u8BEF\u9009\u5DE5\u4F5C\u53F0\u81EA\u5DF1\u7684\u6807\u6CE8\u6846\u6216\u6587\u4EF6\u7F16\u8F91\u6846\u3002
+
+\u3010\u63A7\u5236\u5BA4\u72B6\u6001\u4E0E\u8BA1\u65F6\u3011\u9002\u914D\u65B0\u7248\u4F1A\u8BDD\u72B6\u6001\u3001\u5B50\u4EE3\u7406\u5217\u8868\u53CA\u6700\u8FD1\u6D88\u606F\u8BFB\u53D6\u3002\u652F\u6301\u8BC6\u522B\u65B0\u7684\u5F85\u786E\u8BA4\u4E8B\u9879\uFF1A\u786E\u8BA4\u8FC7\u4E0A\u4E00\u6761\u540E\uFF0C\u4E0B\u4E00\u6761\u4ECD\u4F1A\u91CD\u65B0\u4EAE\u8D77\u63D0\u9192\uFF1B\u8BA1\u65F6\u8BFB\u53D6\u5BBF\u4E3B\u5DF2\u6709\u7684\u4EFB\u52A1\u6216\u4F1A\u8BDD\u8D77\u70B9\uFF0C\u53D6\u4E0D\u5230\u6709\u6548\u8D77\u70B9\u65F6\u4E0D\u663E\u793A\uFF0C\u4E0D\u7F16\u9020\u8FD0\u884C\u65F6\u957F\u3002\u4EFB\u52A1\u505C\u6B62\u4E0D\u7B49\u4E8E\u4EFB\u52A1\u6210\u529F\u3002
+
+\u3010\u53D1\u9001\u4E0E\u6D88\u606F\u9884\u89C8\u3011\u9002\u914D\u65B0\u7248\u4F1A\u8BDD\u7684\u4E34\u65F6\u6301\u6709\u4E0E\u91CA\u653E\u673A\u5236\u3002\u53D1\u9001\u8BF7\u6C42\u5931\u8D25\u6216\u88AB\u62D2\u7EDD\u540E\uFF0C\u4E0D\u518D\u6362\u53E6\u4E00\u6761\u901A\u9053\u91CD\u590D\u53D1\u9001\uFF1B\u63A7\u5236\u5BA4\u9884\u89C8\u4ECE\u5BBF\u4E3B\u5DF2\u52A0\u8F7D\u7684\u6D88\u606F\u7A97\u53E3\u63D0\u53D6\u666E\u901A\u6587\u672C\uFF0C\u4E0D\u4EE3\u8868\u8BFB\u53D6\u4E86\u5B8C\u6574\u5386\u53F2\u3002
+
+\u3010\u6570\u636E\u4E0E\u5347\u7EA7\u3011\u672C\u6B21\u672A\u66F4\u540D\u6216\u8FC1\u79FB\u5DE5\u4F5C\u53F0\u7684\u9879\u76EE\u3001\u5E03\u5C40\u4E0E\u5A92\u4F53\u5B58\u50A8\uFF0C\u4E0D\u9700\u8981\u4E3A\u4E86\u672C\u6B21\u66F4\u65B0\u4E3B\u52A8\u6E05\u7A7A\u6D4F\u89C8\u5668\u6570\u636E\u3002\u5347\u7EA7\u524D\u8BF7\u5907\u4EFD\u914D\u7F6E\u53CA\u91CD\u8981\u6570\u636E\uFF0C\u786E\u8BA4\u5176\u4ED6\u63D2\u4EF6\u4E5F\u652F\u6301\u76EE\u6807 DSH \u7248\u672C\uFF1B\u5B89\u88C5\u540E\u5B8C\u6574\u9000\u51FA\u5E76\u91CD\u542F DSH\uFF0C\u518D\u5237\u65B0\u9875\u9762\u3002\u82E5\u4ECD\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u4FDD\u7559\u5B8C\u6574\u9519\u8BEF\u4FE1\u606F\u53CD\u9988\uFF0C\u4E0D\u8981\u628A\u5B83\u5F53\u4F5C\u6B63\u5E38\u73B0\u8C61\u3002
+
+\u3010\u9A8C\u8BC1\u8303\u56F4\u3011\u672C\u8F6E\u5728 Windows + DSH 0.2.0-rc.2 \u7F51\u9875\u7AEF\u9A8C\u8BC1\u4E86\u51B7\u542F\u52A8\u3001\u5DE5\u4F5C\u53F0/\u63A7\u5236\u5BA4\u9875\u9762\u3001\u901A\u8FC7\u5DE5\u4F5C\u53F0\u65B0\u5EFA\u5E76\u7ED1\u5B9A\u5BF9\u8BDD\u3001\u53D1\u9001\u77ED\u6587\u672C\u5E76\u6536\u5230\u6A21\u578B\u56DE\u590D\u3001\u5173\u95ED\u9879\u76EE\u540E\u56DE\u5207\u4E0E\u91CD\u65B0\u6253\u5F00\uFF1B\u540C\u65F6\u8865\u5145\u65E7\u7248\u670D\u52A1\u56DE\u9000\u4E0E\u5F15\u7528\u5750\u6807\u7B49\u5B9A\u5411\u56DE\u5F52\u3002\u517C\u5BB9\u58F0\u660E\u4EC5\u5217 0.1.1-rc.2\u30010.1.2-rc.1\u30010.2.0-rc.2\uFF1B\u524D\u4E24\u4E2A\u7248\u672C\u6CBF\u7528\u6B64\u524D\u9875\u9762\u9A8C\u6536\u57FA\u7840\u5E76\u505A\u4EE3\u7801\u56DE\u5F52\uFF0C\u672C\u8F6E\u672A\u91CD\u8DD1\u6574\u5957\u65E7\u7248 GUI\uFF0C\u4E0D\u627F\u8BFA\u5176\u4ED6\u7248\u672C\u5168\u90E8\u517C\u5BB9\u3002
+
+\u3010\u5C1A\u672A\u95ED\u73AF\u3011\u5B9E\u9645\u5BA1\u6279/\u5B50\u4EE3\u7406\u6D41\u7A0B\u53CA\u81EA\u52A8\u6302\u8F7D\u5168\u94FE\u8DEF\u5C1A\u672A\u5B8C\u6210\u4E1A\u52A1\u9A8C\u6536\u3002\u5B98\u65B9\u684C\u9762\u7AEF\u5C1A\u672A\u9002\u914D\uFF0CmacOS \u5C1A\u672A\u771F\u673A\u9A8C\u8BC1\uFF1B\u672C\u6B21\u4E5F\u4E0D\u4EE3\u8868\u6240\u6709\u7528\u6237\u7684 DSH \u542F\u52A8\u5931\u8D25\u5DF2\u89E3\u51B3\u3002\u516C\u5F00\u53D1\u5E03\u4FE1\u606F\u4EE5 GitHub Release \u4E3A\u51C6\u3002
+
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+\u6B64\u524D\u7248\u672C\u8BF4\u660E\uFF08v0.3.3\uFF09
 
 \u{1F6E0}\uFE0F \u672C\u7248\u672C\u66F4\u65B0
 
@@ -9047,7 +9125,7 @@ var CHANGELOG_V030 = `\u66F4\u65B0\u516C\u544A \xB7 v0.3.3
 \u30103.1 \u6587\u5B57\u4E0E\u7EC6\u8282\u6253\u78E8\u3011\u5168\u5C40\u5B57\u4F53\u4E0E\u5B57\u53F7\u7EDF\u4E00\u4F18\u5316\u3001\u4E0B\u62C9\u9762\u677F\u73BB\u7483\u5316\u4E0E\u5BF9\u9F50\u3001\u83DC\u5355\u70B9\u9009\u540E\u4FDD\u6301\u6253\u5F00\u4FBF\u4E8E\u8FDE\u7EED\u9884\u89C8\u3001\u6309\u94AE\u63CF\u8FB9\u4E0E\u60AC\u505C\u53CD\u9988\u7B49\u4EA4\u4E92\u7EC6\u8282\uFF1B\u540C\u65F6\u4FEE\u590D\u4E86\u591A\u9879\u4F53\u9A8C\u95EE\u9898\uFF08\u7167\u7247\u4E0A\u4F20\u6E05\u6670\u5EA6\u3001\u80CC\u666F\u7F51\u683C\u7EBF\u5728\u7167\u7247\u6A21\u5F0F\u4E0B\u4E0D\u751F\u6548\u3001\u6D45\u8272\u4E3B\u9898\u4E0B\u5DE5\u4F5C\u72B6\u6001\u5149\u6548\u4E0D\u53EF\u89C1\u7B49\uFF09\u3002`;
 
 // src/client/updateCheck.ts
-var LOCAL_VERSION = false ? "dev" : "0.3.3";
+var LOCAL_VERSION = false ? "dev" : "0.4.0";
 var UPDATE_REPO = "Aisland-SJL/dsh-worktable";
 var K_UPDATE_CHECK = "dsh.worktable.updateCheck.v1";
 var K_LAST_CHECK = "dsh.worktable.lastUpdateCheck.v1";
@@ -16973,7 +17051,6 @@ var BAR_H = 26;
 var PERSIST_KEY = "dsh.worktable.split.v2";
 var CLOSED_TAB_CAP = 5;
 var CLOSED_TAB_SHOW = 3;
-var PRODUCT_SHOW = 6;
 var BUILTIN_ICONS = {
   browser: "\u{1F310}",
   anim: "\u{1F3AC}",
@@ -17219,8 +17296,7 @@ function boxPayload(x0, y0, x1, y1) {
   }
   return { primary, line, candidates, limited, src };
 }
-var UPGRADE_CMD = 'dsh plugin --profile web add "https://github.com/Aisland-SJL/dsh-worktable/releases/latest/download/dsh-worktable.tgz"';
-var UPGRADE_AI = "\u5E2E\u6211\u5347\u7EA7 dsh-worktable\uFF1A\u6267\u884C " + UPGRADE_CMD + "\uFF0C\u5B8C\u6210\u540E\u63D0\u9192\u6211\u91CD\u542F dsh web \u5E76\u5237\u65B0\u9875\u9762";
+var { prompt: UPGRADE_AI } = worktableUpgrade();
 async function copyTextSafe(text2) {
   try {
     if (navigator.clipboard?.writeText) {
@@ -17242,24 +17318,7 @@ async function copyTextSafe(text2) {
   }
 }
 function fillHostInput(text2) {
-  try {
-    const ta = document.querySelector("textarea[data-phase]") ?? Array.from(document.querySelectorAll("textarea")).pop();
-    if (!ta) return false;
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-    const next = ta.value && ta.value.trim() ? ta.value + "\n\n" + text2 : text2;
-    if (setter) setter.call(ta, next);
-    else ta.value = next;
-    ta.dispatchEvent(new Event("input", { bubbles: true }));
-    try {
-      ta.focus();
-      ta.dispatchEvent(new Event("change", { bubbles: true }));
-      ta.setSelectionRange(ta.value.length, ta.value.length);
-    } catch {
-    }
-    return true;
-  } catch {
-    return false;
-  }
+  return splitEnv?.fillHostInput(text2) ?? false;
 }
 function confirmAnnot() {
   const s = annotState;
@@ -17488,24 +17547,6 @@ window.addEventListener("dsh:split-claim", ((e) => {
   const id = e?.detail?.id;
   if (splitStore.active && id && id !== splitStore.spec?.id) splitStore.close();
 }));
-function seedPaneRestore(spec, row, i, content) {
-  const pane = row === "left" ? i === 0 ? spec.left ?? null : null : row === "top" ? (spec.top ?? [])[i] ?? null : (spec.main ?? [])[i] ?? null;
-  if (!pane) return null;
-  if ((pane.tabs ?? []).length > 0) return null;
-  const closed = pane.closedTabs ?? [];
-  if (closed.some((t) => sameContent(t.content, content))) return null;
-  const tab = { id: "t" + Date.now().toString(36), title: tabTitleOf(content), content };
-  const nextPane = { ...pane, closedTabs: [tab, ...closed].slice(0, CLOSED_TAB_CAP) };
-  if (row === "left") return { ...spec, left: nextPane };
-  if (row === "top") {
-    const top = [...spec.top ?? []];
-    top[i] = nextPane;
-    return { ...spec, top };
-  }
-  const main = [...spec.main];
-  main[i] = nextPane;
-  return { ...spec, main };
-}
 var splitStore = {
   active: false,
   spec: null,
@@ -17531,6 +17572,7 @@ var splitStore = {
   lastMarginRight: "",
   lastMarginTop: "",
   onSpecMutated: null,
+  onPaneContentEdited: null,
   listeners: /* @__PURE__ */ new Set(),
   open(spec) {
     if (this.active) {
@@ -17846,7 +17888,7 @@ var splitStore = {
   lockPane(row, i, content) {
     const spec = this.spec;
     if (!spec) return;
-    const tab = { id: "t" + Date.now().toString(36), title: tabTitleOf(content), content, active: 0 };
+    const tab = { id: "t" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2), title: tabTitleOf(content), content, active: 0 };
     const mutate = (pane) => ({ ...pane, content: null, tabs: [tab], active: 0 });
     if (row === "left") {
       if (!spec.left || i !== 0) return;
@@ -17870,6 +17912,8 @@ var splitStore = {
   setTabContent(row, index, tabId, content) {
     const spec = this.spec;
     if (!spec) return;
+    const edited = row === "left" ? spec.left : row === "top" ? spec.top?.[index] : spec.main[index];
+    if (edited?.tabs?.some((t) => t.id === tabId)) this.onPaneContentEdited?.(spec.id, edited.id);
     const mutate = (pane) => {
       const tabs = (pane.tabs ?? []).map((t) => t.id === tabId ? { ...t, content, title: tabTitleOf(content) } : t);
       return { ...pane, tabs };
@@ -17895,6 +17939,8 @@ var splitStore = {
   openTab(row, i, content) {
     const spec = this.spec;
     if (!spec) return;
+    const edited = row === "left" ? spec.left : row === "top" ? spec.top?.[i] : spec.main[i];
+    if (edited) this.onPaneContentEdited?.(spec.id, edited.id);
     const mutate = (pane) => {
       const tabs = [...pane.tabs ?? []];
       const existing = tabs.findIndex((t) => sameContent(t.content, content));
@@ -17948,6 +17994,8 @@ var splitStore = {
   closeTab(row, i, tabId) {
     const spec = this.spec;
     if (!spec) return;
+    const edited = row === "left" ? spec.left : row === "top" ? spec.top?.[i] : spec.main[i];
+    if (edited?.tabs?.some((t) => t.id === tabId)) this.onPaneContentEdited?.(spec.id, edited.id);
     const mutate = (pane) => {
       const list2 = pane.tabs ?? [];
       const removed = list2.find((t) => t.id === tabId);
@@ -17983,17 +18031,6 @@ var splitStore = {
     this.persist();
     this.notify();
   },
-  /** 存量救援回填（活 spec 通道）：把产物登记为空窗格的可恢复项（只登记不挂载） */
-  seedRestore(row, i, content) {
-    const spec = this.spec;
-    if (!spec) return;
-    const next = seedPaneRestore(spec, row, i, content);
-    if (!next) return;
-    this.spec = next;
-    this.onSpecMutated?.(this.spec);
-    this.persist();
-    this.notify();
-  },
   moveTab(fromRow, fromI, tabId, toRow, toI) {
     const spec = this.spec;
     if (!spec) return;
@@ -18009,6 +18046,8 @@ var splitStore = {
     if (!fromPane || !toPane) return;
     const tab = (fromPane.tabs ?? []).find((t) => t.id === tabId);
     if (!tab) return;
+    this.onPaneContentEdited?.(spec.id, fromPane.id);
+    this.onPaneContentEdited?.(spec.id, toPane.id);
     const fromTabs = (fromPane.tabs ?? []).filter((t) => t.id !== tabId);
     const toTabs = [...toPane.tabs ?? [], tab];
     const setPane = (row, i, pane) => {
@@ -19419,9 +19458,8 @@ function TerminalPane() {
     focusTerm();
     el.addEventListener("pointerdown", focusTerm);
     const scope = splitEnv?.getScope?.();
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = proto + "//" + location.host + "/api/worktable/term?sessionId=" + encodeURIComponent(scope?.sessionId ?? "") + "&cwd=" + encodeURIComponent(scope?.cwd ?? "") + "&cols=80&rows=24";
     try {
+      const url = hostWebSocketUrl("/api/worktable/term?sessionId=" + encodeURIComponent(scope?.sessionId ?? "") + "&cwd=" + encodeURIComponent(scope?.cwd ?? "") + "&cols=80&rows=24");
       ws = new WebSocket(url);
     } catch {
       term.dispose();
@@ -19631,7 +19669,7 @@ function SelectPop(props) {
   ] });
 }
 function CustomPane(props) {
-  const paneTitle = props.paneTitle ?? "";
+  const paneTitle = props.row === void 0 ? props.paneTitle ?? "" : windowLabelOf(props.row, props.index ?? 0).match(/^窗口\d+/)?.[0] ?? "";
   try {
     window.__dshLastCustomPaneTitle = paneTitle;
   } catch {
@@ -19646,6 +19684,7 @@ function CustomPane(props) {
   const [wsGroups, setWsGroups] = (0, import_react.useState)([]);
   const [groupMode, setGroupMode] = (0, import_react.useState)("none");
   const [groupId, setGroupId] = (0, import_react.useState)(null);
+  const groupTouchedRef = (0, import_react.useRef)(false);
   const [newGroupParent, setNewGroupParent] = (0, import_react.useState)("");
   const [newGroupName, setNewGroupName] = (0, import_react.useState)("");
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -19664,7 +19703,7 @@ function CustomPane(props) {
       setSessionId(flat.find((s) => s.isCurrent)?.id ?? flat[0]?.id ?? null);
       const curId = flat.find((s) => s.isCurrent)?.id;
       const home = curId ? (custom?.getWorkspaces?.() ?? []).find((w) => (w.sessionIds ?? []).includes(curId)) : null;
-      if (home) {
+      if (home && !groupTouchedRef.current) {
         setGroupMode("existing");
         setGroupId(home.id);
       }
@@ -19778,6 +19817,7 @@ function CustomPane(props) {
           }],
           placeholder: T("custom.group"),
           onChange: (id) => {
+            groupTouchedRef.current = true;
             if (id === "__none") setGroupMode("none");
             else if (id === "__new") setGroupMode("new");
             else {
@@ -19846,7 +19886,7 @@ function PaneTabBody(props) {
   if (content.type === "scm") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GitPane, {});
   if (content.type === "tasks") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(JobsPane, {});
   if (content.type === "terminal") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TerminalPane, {});
-  if (content.type === "custom") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CustomPane, { paneTitle: props.paneTitle ?? "" });
+  if (content.type === "custom") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CustomPane, { paneTitle: props.paneTitle ?? "", row: props.row, index: props.index });
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_paneWip", children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_paneWipIcon", "aria-hidden": true, children: BUILTIN_ICONS[content.type] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_paneWipText", children: T("pane.wip") })
@@ -19929,36 +19969,7 @@ function PaneBody(props) {
 }
 function PanePicker(props) {
   const [mode, setMode] = (0, import_react.useState)("grid");
-  const [products, setProducts] = (0, import_react.useState)([]);
   const hostRef = (0, import_react.useRef)(null);
-  (0, import_react.useEffect)(() => {
-    let alive = true;
-    const load = () => {
-      const p = splitEnv?.widgets?.products?.(props.projectId);
-      if (!p) {
-        setProducts([]);
-        return;
-      }
-      Promise.resolve(p).then((l) => {
-        if (alive) setProducts((l ?? []).slice(0, PRODUCT_SHOW));
-      }).catch(() => {
-        if (alive) setProducts([]);
-      });
-    };
-    load();
-    let un;
-    try {
-      un = splitEnv?.widgets?.subscribe?.(props.projectId, load);
-    } catch {
-    }
-    return () => {
-      alive = false;
-      try {
-        un?.();
-      } catch {
-      }
-    };
-  }, [props.projectId]);
   (0, import_react.useEffect)(() => {
     const el = hostRef.current;
     if (!el) return;
@@ -19994,29 +20005,6 @@ function PanePicker(props) {
       },
       t.id
     )) }),
-    products.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_paneRestore", children: products.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-      "button",
-      {
-        type: "button",
-        className: "dsh-wt_paneRestoreBtn dsh-wt_paneProductBtn",
-        title: T("pane.productTitle", { name: p.title }),
-        onClick: () => {
-          try {
-            splitEnv?.widgets?.mountProduct(props.projectId, p.key, props.row, props.index);
-          } catch {
-          }
-        },
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F4E6}" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "dsh-wt_paneRestoreName", children: [
-            T("pane.products"),
-            "\uFF1A",
-            p.title
-          ] })
-        ]
-      },
-      p.key
-    )) }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: hostRef, className: "dsh-wt_panePicker dsh-wt_panePicker-" + mode, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: "dsh-wt_panePick", onClick: () => pick({ kind: "builtin", type: "browser" }), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u{1F310}" }),
@@ -20038,76 +20026,6 @@ function PanePicker(props) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u2728" }),
         T("pane.custom")
       ] })
-    ] })
-  ] });
-}
-function WidgetMenu(props) {
-  const [items, setItems] = (0, import_react.useState)(null);
-  const [open, setOpen] = (0, import_react.useState)(false);
-  const refresh = (0, import_react.useCallback)(() => {
-    const p = splitEnv?.widgets?.list(props.projectId);
-    if (!p) {
-      setItems([]);
-      return;
-    }
-    Promise.resolve(p).then((l) => setItems(l ?? [])).catch(() => setItems([]));
-  }, [props.projectId]);
-  (0, import_react.useEffect)(() => {
-    refresh();
-    let un;
-    try {
-      un = splitEnv?.widgets?.subscribe?.(props.projectId, refresh);
-    } catch {
-    }
-    return () => {
-      try {
-        un?.();
-      } catch {
-      }
-    };
-  }, [refresh]);
-  if (!items || items.length === 0) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        type: "button",
-        className: "dsh-wt_widgetBtn",
-        title: T("widget.list"),
-        "aria-label": T("widget.list"),
-        "aria-expanded": open,
-        onClick: () => {
-          setOpen((v) => !v);
-          refresh();
-        },
-        children: "\u{1F4E6}"
-      }
-    ),
-    open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_widgetPop", role: "menu", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsh-wt_widgetHead", children: T("widget.title") }),
-      items.map((it) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          className: "dsh-wt_widgetRow",
-          disabled: !it.mountable,
-          title: it.mountable ? it.title : T("widget.noPane"),
-          onClick: () => {
-            try {
-              splitEnv?.widgets?.mount(props.projectId, it.index);
-            } catch {
-            }
-            ;
-            setOpen(false);
-          },
-          children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_widgetWin", children: it.window }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_widgetName", children: it.title })
-          ]
-        },
-        it.index
-      ))
     ] })
   ] });
 }
@@ -20343,7 +20261,6 @@ function WorkspaceLayer(props) {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsh-wt_splitBar", style: { position: "fixed", left: g.left, top: barTop, width: hasLeft || chatFull ? contentW : hasTop ? colW : contentW, zIndex: 70 }, children: [
       spec.id !== "wt-console" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dsh-wt_splitTitle", children: spec.title }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(WidgetMenu, { projectId: spec.id }),
       spec.id !== "wt-console" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProjectSessionsMenu, { projectId: spec.id }),
       !hasLeft && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
@@ -20490,8 +20407,374 @@ function SplitWorkspace() {
 }
 try {
   const w = window;
-  w.__dshWorktable = { ...w.__dshWorktable ?? {}, splitStore, seedPaneRestore };
+  w.__dshWorktable = { ...w.__dshWorktable ?? {}, splitStore };
 } catch {
+}
+
+// src/client/sessionCompat.ts
+function currentSessionOf(snapshot) {
+  if (typeof snapshot?.current === "string") return snapshot.current;
+  const rows = Object.values(snapshot?.byId ?? {});
+  return rows.find((row) => (row?.retainedBy?.mainView ?? 0) > 0)?.id ?? "";
+}
+function openHostSession(ctx, sessions, id) {
+  const ui = typeof ctx?.get === "function" ? ctx.get("uiWorkspace") : ctx?.uiWorkspace;
+  if (typeof ui?.openSession === "function") return ui.openSession(id);
+  if (typeof sessions?.open === "function") return sessions.open(id);
+  throw new Error("Host session navigation unavailable");
+}
+async function sendHostSession(bridge, id, text2) {
+  const sessions = bridge?.sessions;
+  const check = (result) => {
+    if (result?.kind === "error" || result?.ok === false) {
+      throw new Error(result.text || result.error?.message || result.error?.code || "Session submission rejected");
+    }
+  };
+  const send = async (session) => {
+    if (session && typeof bridge?.conversation?.sendSession === "function") {
+      check(await bridge.conversation.sendSession(session, text2, [], "queue"));
+      return;
+    }
+    if (session && typeof session.prompt === "function") {
+      check(await session.prompt([{ type: "text", text: text2 }], "queue"));
+      return;
+    }
+    const conv = sessions?.scope?.(id)?.get?.("conversation");
+    if (typeof conv?.send === "function") {
+      check(await conv.send(text2));
+      return;
+    }
+    throw new Error("no send path: session face unavailable");
+  };
+  if (typeof sessions?.using === "function") {
+    await sessions.using(id, { source: "dshWorktable" }, async (ref) => {
+      const binding = await ref.ready;
+      await send(binding.session);
+    });
+    return;
+  }
+  let face = null;
+  for (let i = 0; i < 10; i++) {
+    face = sessions?.binding?.(id)?.session;
+    if (face) break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  await send(face);
+}
+function createSessionSnapshotAdapter() {
+  const previousRunning = /* @__PURE__ */ new Map();
+  const stopped = /* @__PURE__ */ new Set();
+  return (snapshot, statusSource) => {
+    if (!snapshot || typeof snapshot.current === "string") return snapshot;
+    const statuses = statusSource?.getSnapshot?.();
+    const byId = {};
+    const subagentsByParent = { ...snapshot.subagentsByParent };
+    for (const [id, row] of Object.entries(snapshot.byId ?? {})) {
+      const status = statuses?.get?.(id);
+      const running = status?.running ?? row.running;
+      if (running === true) stopped.delete(id);
+      else if (running === false && previousRunning.get(id) === true) stopped.add(id);
+      if (typeof running === "boolean") previousRunning.set(id, running);
+      byId[id] = {
+        ...row,
+        running,
+        pendingInteraction: status ? status.pendingInteraction : row.pendingInteraction,
+        // completionUnread clears when opening the main view. Keep a witnessed run-stop
+        // until the next run so an active project's widget-result handshake still runs.
+        completed: running !== true && (stopped.has(id) || status?.completionUnread === true || row.completed === true)
+      };
+      const children = snapshot.projectionsBySession?.[id]?.values?.subagentCatalog ?? row.projectionValues?.subagentCatalog;
+      if (Array.isArray(children)) subagentsByParent[id] = children;
+    }
+    if (snapshot.phase === "ready") {
+      for (const id of previousRunning.keys()) if (!byId[id]) {
+        previousRunning.delete(id);
+        stopped.delete(id);
+      }
+    }
+    return { ...snapshot, byId, subagentsByParent };
+  };
+}
+function childSessionIdsOf(snapshot, sid) {
+  const children = /* @__PURE__ */ new Set();
+  for (const [id, row] of Object.entries(snapshot?.byId ?? {})) {
+    if (id !== sid && row?.parentId === sid) children.add(id);
+  }
+  const catalog = snapshot?.subagentsByParent?.[sid];
+  const rows = Array.isArray(catalog) ? catalog : catalog?.entries ?? catalog?.items ?? [];
+  if (Array.isArray(rows)) for (const row of rows) {
+    const id = row?.sessionId ?? row?.id;
+    if (typeof id === "string" && id !== sid) children.add(id);
+  }
+  return children;
+}
+function pendingAckOf(snapshot, sid, legacyFace) {
+  const identities = [];
+  let identified = false;
+  const add = (id, pending) => {
+    if (pending == null) return;
+    const key = typeof pending?.key === "string" ? pending.key : "";
+    if (key) identified = true;
+    identities.push(JSON.stringify([id, String(pending?.kind ?? ""), key]));
+  };
+  const ids = [sid, ...childSessionIdsOf(snapshot, sid)];
+  for (const id of ids) add(id, snapshot?.byId?.[id]?.pendingInteraction);
+  if (snapshot?.byId?.[sid]?.pendingInteraction == null && Array.isArray(legacyFace?.pending)) {
+    for (const pending of legacyFace.pending) add(sid, pending);
+  }
+  if (!identities.length) return null;
+  return identified ? "need:" + JSON.stringify([...new Set(identities)].sort()) : "need";
+}
+function sessionRuntimeMs(snapshot, sid, sessions, uiConversation, now = Date.now()) {
+  if (snapshot?.byId?.[sid]?.running !== true) return null;
+  const validStart = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0;
+  let start = null;
+  for (const job of snapshot?.jobsBySession?.[sid] ?? []) {
+    if (job?.status === "running" && validStart(job.startedAt) && (start == null || job.startedAt < start)) start = job.startedAt;
+  }
+  if (start != null) return Math.max(0, now - start);
+  let timings;
+  try {
+    timings = uiConversation?.binding?.(sid)?.target?.("chat")?.getSnapshot?.()?.legacy?.turnTimings;
+  } catch {
+  }
+  if (timings == null) {
+    try {
+      timings = sessions?.binding?.(sid)?.session?.getSnapshot?.()?.turnTimings;
+    } catch {
+    }
+  }
+  const turns = typeof timings?.values === "function" ? Array.from(timings.values()) : Object.values(timings ?? {});
+  for (const turn of turns) {
+    if (turn?.endTime == null && validStart(turn?.startTime) && (start == null || turn.startTime > start)) start = turn.startTime;
+  }
+  return start == null ? null : Math.max(0, now - start);
+}
+
+// src/client/hostInput.ts
+function appendHostInput(bridge, text2, doc = document) {
+  try {
+    const resolver = bridge?.conversation?.input;
+    if (typeof resolver?.for === "function") {
+      const snapshot = bridge.sessions?.list?.getSnapshot?.();
+      const id = currentSessionOf(snapshot);
+      const scope = id ? bridge.sessions?.scope?.(id) : null;
+      if (!scope) return false;
+      const input = resolver.for(scope);
+      const state = input?.state?.getSnapshot?.();
+      if (!state || typeof state.draft !== "string" || !Number.isInteger(state.draftRev) || !["plain", "claimed"].includes(state.phase) || !Array.isArray(state.occurrences)) return false;
+      const compactReferences = typeof snapshot?.current !== "string";
+      let end = state.draft.length;
+      let previousEnd = 0;
+      for (const item of state.occurrences) {
+        if (!Number.isInteger(item.offset) || !Number.isInteger(item.length) || item.length < 0 || item.offset < previousEnd || item.offset + item.length > state.draft.length) return false;
+        previousEnd = item.offset + item.length;
+        if (compactReferences) end += 1 - item.length;
+      }
+      const span = { start: end, end, draftRev: state.draftRev };
+      const addition = (state.draft.trim() ? "\n\n" : "") + text2;
+      const inserted = typeof input.actions?.insertText === "function" ? input.actions.insertText(addition, span) === true : scope.bail?.("slash/input-insert-text", { text: addition, span }) === true;
+      if (inserted) {
+        try {
+          input.focus?.();
+        } catch {
+        }
+      }
+      return inserted;
+    }
+    const ta = doc.querySelector("textarea[data-phase]");
+    if (!ta || ta.disabled || ta.readOnly || ta.closest(".dsh-wt_annotUi")) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    const next = ta.value && ta.value.trim() ? ta.value + "\n\n" + text2 : text2;
+    if (setter) setter.call(ta, next);
+    else ta.value = next;
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    try {
+      ta.focus();
+      ta.dispatchEvent(new Event("change", { bubbles: true }));
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    } catch {
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// src/client/widgetMount.ts
+var WIDGET_BINDINGS_KEY = "dsh.worktable.widgetBindings.v2";
+function newWidgetId(prefix = "binding") {
+  const id = globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  return prefix + "-" + id;
+}
+function widgetTargets(spec) {
+  if (!spec) return [];
+  const out = [];
+  const add = (row, panes) => panes.forEach((pane, index) => {
+    if (pane && typeof pane.id === "string") out.push({ row, index, pane, window: "\u7A97\u53E3" + (out.length + 1) });
+  });
+  add("left", spec.left ? [spec.left] : []);
+  add("top", spec.top ?? []);
+  add("main", spec.main ?? []);
+  return out;
+}
+function widgetManifestPath(binding) {
+  return joinPath(binding.folder, joinPath(".dsh-worktable", joinPath(
+    "project-" + encodeURIComponent(binding.projectId),
+    "pane-" + encodeURIComponent(binding.paneId) + "-" + binding.bindingId + ".json"
+  )));
+}
+var WidgetMountRegistry = class {
+  constructor(storage, makeId = () => newWidgetId()) {
+    this.storage = storage;
+    this.makeId = makeId;
+    try {
+      const data = JSON.parse(storage?.getItem(WIDGET_BINDINGS_KEY) ?? "{}");
+      for (const [projectId, panes] of Object.entries(data ?? {})) {
+        if (!panes || typeof panes !== "object" || Array.isArray(panes)) continue;
+        const valid = /* @__PURE__ */ Object.create(null);
+        for (const [paneId, b] of Object.entries(panes)) {
+          const v = b;
+          if (v?.projectId !== projectId || v.paneId !== paneId || typeof v.folder !== "string" || !v.folder || typeof v.sessionId !== "string" || !v.sessionId || typeof v.window !== "string" || typeof v.bindingId !== "string" || !/^[a-z0-9-]+$/i.test(v.bindingId) || typeof v.enabled !== "boolean") continue;
+          valid[paneId] = { ...v };
+        }
+        if (Object.keys(valid).length) this.records[projectId] = valid;
+      }
+    } catch {
+    }
+  }
+  records = /* @__PURE__ */ Object.create(null);
+  listeners = /* @__PURE__ */ new Set();
+  persist() {
+    this.storage?.setItem(WIDGET_BINDINGS_KEY, JSON.stringify(this.records));
+    for (const fn of this.listeners) fn();
+  }
+  subscribe(fn) {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+  entries(projectId) {
+    const projects = projectId ? [this.records[projectId] ?? {}] : Object.values(this.records);
+    return projects.flatMap((panes) => Object.values(panes)).filter((b) => b.enabled);
+  }
+  begin(projectId, spec, folder, sessionId, window2) {
+    if (!this.storage) throw new Error("project storage unavailable");
+    if (!folder || !sessionId || spec.id !== projectId) throw new Error("project folder or session unavailable");
+    const targets = widgetTargets(spec);
+    const selected = targets.find((t) => t.window === window2);
+    if (!selected || new Set(targets.map((t) => t.pane.id)).size !== targets.length) throw new Error("project window changed");
+    const before = this.records[projectId];
+    const next = /* @__PURE__ */ Object.create(null);
+    for (const t of targets) {
+      const old = before?.[t.pane.id];
+      next[t.pane.id] = t === selected || !old || old.folder !== folder || old.enabled && old.window !== t.window ? { projectId, paneId: t.pane.id, window: t.window, folder, sessionId, bindingId: this.makeId(), enabled: true } : old;
+    }
+    this.records[projectId] = next;
+    try {
+      this.persist();
+    } catch (error2) {
+      if (before) this.records[projectId] = before;
+      else delete this.records[projectId];
+      throw error2;
+    }
+    return this.entries(projectId).filter((b) => b.sessionId === sessionId);
+  }
+  revokePane(projectId, paneId) {
+    const b = this.records[projectId]?.[paneId];
+    if (!b || !b.enabled) return;
+    this.records[projectId] = { ...this.records[projectId], [paneId]: { ...b, enabled: false } };
+    try {
+      this.persist();
+    } catch {
+    }
+  }
+  revokeProject(projectId) {
+    if (!this.records[projectId]) return;
+    for (const b of this.entries(projectId)) this.revokePane(projectId, b.paneId);
+  }
+  isCurrent(binding, spec, folder) {
+    const current = this.records[binding.projectId]?.[binding.paneId];
+    return !!current?.enabled && current.bindingId === binding.bindingId && current.sessionId === binding.sessionId && current.folder === folder && binding.folder === folder && spec?.id === binding.projectId && widgetTargets(spec).filter((t) => t.pane.id === binding.paneId).length === 1;
+  }
+  resolve(binding, raw, spec, folder) {
+    if (!this.isCurrent(binding, spec, folder)) return null;
+    try {
+      const d = JSON.parse(raw);
+      if (!d || Array.isArray(d) || d.version !== 2 || d.projectId !== binding.projectId || d.paneId !== binding.paneId || d.bindingId !== binding.bindingId || d.window !== binding.window || !["html", "url", "file"].includes(d.kind) || typeof d.path !== "string" || !d.path.trim()) return null;
+      const target = widgetTargets(spec).find((t) => t.pane.id === binding.paneId);
+      return { target, item: { kind: d.kind, path: d.path.trim() } };
+    } catch {
+      return null;
+    }
+  }
+};
+
+// src/client/sessionDetails.ts
+function cleanPreviewText(raw) {
+  return String(raw ?? "").replace(/```[a-zA-Z0-9_+-]*[\s\S]*?```/g, " ").replace(/```[a-zA-Z0-9_+-]*[\s\S]*$/g, " ").replace(/`[^`\n]{1,200}`/g, " ").replace(/```/g, " ").replace(/\s+/g, " ").trim();
+}
+function previewFromEvents(entries) {
+  if (!Array.isArray(entries)) return "";
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const ev = entries[i]?.event;
+    if (ev?.type !== "user/message" && ev?.type !== "assistant/message") continue;
+    const data = ev.type === "assistant/message" ? ev.data?.message ?? ev.data : ev.data;
+    const blocks = data?.content ?? data?.blocks;
+    if (!Array.isArray(blocks)) continue;
+    const raw = blocks.filter((b) => b?.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n");
+    const text2 = cleanPreviewText(raw);
+    if (text2.length >= 8) return text2.slice(0, 220);
+  }
+  return "";
+}
+async function readSessionPreview(sessions, id) {
+  if (typeof sessions?.using === "function") {
+    return sessions.using(id, { source: "dshWorktablePreview" }, async (ref) => {
+      const binding = await ref.ready;
+      return previewFromEvents(binding.eventSource?.getSnapshot?.()?.entries);
+    });
+  }
+  const face = sessions?.binding?.(id)?.session;
+  if (typeof face?.history !== "function") return "";
+  const result = await face.history({ maxMessages: 6 });
+  return previewFromEvents(result?.result?.value?.events);
+}
+function presetApiOf(ctx, legacy) {
+  const api = typeof ctx?.get === "function" ? ctx.get("remote.agentPresets") : ctx?.remote?.agentPresets;
+  if (typeof api?.list !== "function" || typeof api?.select !== "function") return legacy;
+  return {
+    list: async () => ({ result: await api.list() }),
+    select: async ({ sessionId, agentPreset }) => ({ result: await api.select(sessionId, agentPreset) })
+  };
+}
+function modelApiOf(ctx, sessions, legacy) {
+  if (typeof sessions?.using !== "function") return legacy;
+  const resolver = typeof ctx?.get === "function" ? ctx.get("modelDirectories") : ctx?.modelDirectories;
+  if (typeof resolver?.directoryFor !== "function") return legacy;
+  const withDirectory = (id, operation) => sessions.using(id, { source: "dshWorktableModel" }, async (ref) => {
+    await ref.ready;
+    return operation(resolver.directoryFor(id));
+  });
+  return {
+    models: async ({ sessionId }) => withDirectory(sessionId, async (directory) => ({ result: { ok: true, value: await directory.load() } })),
+    selectModel: async ({ sessionId, ...selection }) => withDirectory(sessionId, async (directory) => ({ result: await directory.select(selection) }))
+  };
+}
+function blankSessionNeedsWorkspace(sessions, grouping) {
+  return grouping === "none" && typeof sessions?.using === "function";
+}
+async function createHostSession(sessions, workspaces, options = {}, grouping = "auto") {
+  if (grouping === "none") {
+    if (options.workspaceId) throw new Error("ungrouped session cannot specify a workspace");
+    return sessions.create(options);
+  }
+  if (options.workspaceId || typeof sessions?.using !== "function") return sessions.create(options);
+  const workspace = options.cwd ? await workspaces?.create?.({ path: options.cwd }) : await workspaces?.initializeDefault?.();
+  if (typeof workspace?.workspaceId !== "string" || !workspace.workspaceId) throw new Error("workspace unavailable for new session");
+  const { cwd: _cwd, ...rest } = options;
+  return sessions.create({ ...rest, workspaceId: workspace.workspaceId });
 }
 
 // src/client/photoStore.ts
@@ -20658,10 +20941,9 @@ var WAVE_BG_B64 = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQUFBAYFBQUHBgYHCQ8KCQgIC
 
 // src/client/index.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
-var LOCAL_VERSION2 = false ? "dev" : "0.3.3";
+var LOCAL_VERSION2 = false ? "dev" : "0.4.0";
 var UPDATE_REPO2 = "Aisland-SJL/dsh-worktable";
-var UPGRADE_CMD2 = 'dsh plugin --profile web add "https://github.com/Aisland-SJL/dsh-worktable/releases/latest/download/dsh-worktable.tgz"';
-var UPGRADE_AI2 = "\u5E2E\u6211\u5347\u7EA7 dsh-worktable\uFF1A\u6267\u884C " + UPGRADE_CMD2 + "\uFF0C\u5B8C\u6210\u540E\u63D0\u9192\u6211\u91CD\u542F dsh web \u5E76\u5237\u65B0\u9875\u9762";
+var { command: UPGRADE_CMD, prompt: UPGRADE_AI2, desktop: DESKTOP_HOST } = worktableUpgrade();
 var ICON_SYNC = /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 16 16", "aria-hidden": true, children: [
   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { fill: "none", stroke: "currentColor", strokeWidth: "1.6", strokeLinecap: "round", strokeLinejoin: "round", d: "M1.5 8a6.5 6.5 0 0 1 11.1-4.6L14.5 5" }),
   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { fill: "none", stroke: "currentColor", strokeWidth: "1.6", strokeLinecap: "round", strokeLinejoin: "round", d: "M14.5 1.5V5h-3.5" }),
@@ -20733,7 +21015,7 @@ function buildLayout(presetId, name) {
   const top = Array.from({ length: def.topCount }, (_, i) => mk(def.leftCount + i));
   const main = Array.from({ length: def.contentCount }, (_, i) => mk(def.leftCount + def.topCount + i));
   return {
-    id: "layout-" + Date.now().toString(36),
+    id: newWidgetId("layout"),
     title: name,
     left: left ?? null,
     top: top.length > 0 ? top : null,
@@ -20970,44 +21252,10 @@ var registryStore = { ids: [], listeners: /* @__PURE__ */ new Set() };
 var sessionBridge = null;
 var clientCtx = null;
 var hostApi = null;
-function mainViewSessionChannel() {
-  try {
-    const uw = clientCtx?.get?.("uiWorkspace");
-    if (uw && typeof uw.openSession === "function") {
-      return {
-        open: (id) => {
-          uw.openSession(id);
-        },
-        current: () => {
-          try {
-            return uw.selection?.getSnapshot?.()?.sessionId ?? "";
-          } catch {
-            return "";
-          }
-        }
-      };
-    }
-  } catch {
-  }
-  return {
-    open: (id) => {
-      const fn = sessionBridge?.sessions?.open;
-      if (typeof fn === "function") fn.call(sessionBridge.sessions, id);
-    },
-    current: () => {
-      try {
-        return sessionBridge?.list?.getSnapshot?.()?.current ?? "";
-      } catch {
-        return "";
-      }
-    }
-  };
-}
 function openMainSession(sessionId) {
   if (!sessionId) return false;
   try {
-    mainViewSessionChannel().open(sessionId);
-    ensureMainSessionWatch();
+    void openHostSession(clientCtx, sessionBridge?.sessions, sessionId);
     return true;
   } catch {
     return false;
@@ -21015,27 +21263,13 @@ function openMainSession(sessionId) {
 }
 function currentMainSessionId() {
   try {
-    return mainViewSessionChannel().current() ?? "";
+    return currentSessionOf(sessionBridge?.list?.getSnapshot?.()) ?? "";
   } catch {
     return "";
   }
 }
-var mainSessionWatchDispose = null;
-var mainSessionWatchRef = { list: null };
-function ensureMainSessionWatch() {
-  if (mainSessionWatchDispose) return;
-  try {
-    const selection = clientCtx?.get?.("uiWorkspace")?.selection;
-    if (!selection || typeof selection.subscribe !== "function") return;
-    const dispose = selection.subscribe(() => syncSessionScope(mainSessionWatchRef.list));
-    mainSessionWatchDispose = typeof dispose === "function" ? dispose : () => {
-    };
-  } catch {
-    mainSessionWatchDispose = null;
-  }
-}
 async function ensureSessionPreset(sessionId) {
-  const api = hostApi?.agentPresets;
+  const api = presetApiOf(clientCtx, hostApi?.agentPresets);
   if (!api || typeof api.list !== "function" || typeof api.select !== "function") return;
   try {
     const listRes = await api.list({});
@@ -21091,7 +21325,7 @@ function pickInheritedModel(groups, baseModel) {
   return { provider: flat[0].provider, model: flat[0].model };
 }
 async function ensureSessionModel(sessionId) {
-  const api = hostApi?.sessions;
+  const api = modelApiOf(clientCtx, sessionBridge?.sessions, hostApi?.sessions);
   if (!api || typeof api.models !== "function" || typeof api.selectModel !== "function") return;
   try {
     const mRes = await api.models({ sessionId });
@@ -21101,7 +21335,7 @@ async function ensureSessionModel(sessionId) {
     let target = null;
     let effort;
     try {
-      const cur = currentMainSessionId();
+      const cur = currentSessionOf(sessionBridge?.list?.getSnapshot?.());
       if (cur && cur !== sessionId) {
         const cRes = await api.models({ sessionId: cur });
         if (cRes?.result?.ok) {
@@ -21195,51 +21429,10 @@ function listWorkspaces() {
     return [];
   }
 }
-function cleanPreviewText(raw) {
-  let s = String(raw ?? "");
-  s = s.replace(/```[a-zA-Z0-9_+-]*[\s\S]*?```/g, " ");
-  s = s.replace(/```[a-zA-Z0-9_+-]*[\s\S]*$/g, " ");
-  s = s.replace(/`[^`\n]{1,200}`/g, " ");
-  s = s.replace(/```/g, " ");
-  s = s.replace(/\s+/g, " ").trim();
-  return s;
-}
 var previewCache = /* @__PURE__ */ new Map();
 var previewFetching = /* @__PURE__ */ new Set();
 var previewSweepBusy = false;
 var previewTimer = null;
-async function coldPreviewOf(face) {
-  if (!face || typeof face.history !== "function") return "";
-  const r1 = await face.history({ maxMessages: 6 });
-  const evs = r1?.result?.value?.events;
-  if (!Array.isArray(evs)) return "";
-  const textOf = (blocks) => {
-    let fallback = "";
-    if (!Array.isArray(blocks)) return "";
-    for (const b of blocks) {
-      const s = typeof b?.text === "string" ? b.text.trim() : "";
-      if (!s) continue;
-      if (b?.type === "text") return s;
-      if (!fallback) fallback = s;
-    }
-    return fallback;
-  };
-  for (let i = evs.length - 1; i >= 0; i--) {
-    const ev = evs[i]?.event;
-    if (!ev) continue;
-    const d = ev.data ?? {};
-    let raw = "";
-    if (ev.type === "user/message") raw = textOf(d.content ?? d.blocks);
-    else if (ev.type === "assistant/message") {
-      const m = d.message ?? d;
-      raw = textOf(m.content ?? m.blocks);
-    }
-    if (!raw) continue;
-    const clean = cleanPreviewText(raw);
-    if (clean.length >= 8) return clean.slice(0, 220);
-  }
-  return "";
-}
 async function sweepPreviews() {
   if (previewSweepBusy) return;
   previewSweepBusy = true;
@@ -21249,12 +21442,9 @@ async function sweepPreviews() {
       if (previewFetching.has(sid)) continue;
       previewFetching.add(sid);
       try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session;
-        const txt = await coldPreviewOf(face);
-        if (txt) {
-          previewCache.set(sid, txt);
-          notifyConsole();
-        }
+        const txt = await readSessionPreview(sessionBridge?.sessions, sid);
+        previewCache.set(sid, txt);
+        notifyConsole();
       } catch {
       } finally {
         previewFetching.delete(sid);
@@ -21265,7 +21455,7 @@ async function sweepPreviews() {
   }
 }
 function schedulePreviewSweep() {
-  if (previewTimer != null) return;
+  if (previewSweepBusy || previewTimer != null) return;
   previewTimer = window.setTimeout(() => {
     previewTimer = null;
     sweepPreviews();
@@ -21273,7 +21463,9 @@ function schedulePreviewSweep() {
 }
 function lastTextOf(sid) {
   try {
-    const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.();
+    const binding = sessionBridge?.sessions?.binding?.(sid);
+    if (binding?.eventSource?.getSnapshot) return previewFromEvents(binding.eventSource.getSnapshot().entries);
+    const face = binding?.session?.getSnapshot?.();
     const nodes = face?.nodes ?? [];
     for (let i = nodes.length - 1; i >= 0; i--) {
       const n = nodes[i];
@@ -21479,8 +21671,20 @@ async function fetchSessionGroups() {
   try {
     const snap = sessionBridge?.list?.getSnapshot?.();
     const byId = snap?.byId ?? {};
-    const current = currentMainSessionId() || (snap?.current ?? "");
-    const subKids = subagentSessionIds(snap);
+    const current = currentSessionOf(snap);
+    const subKids = /* @__PURE__ */ new Set();
+    try {
+      const map2 = snap?.subagentsByParent ?? {};
+      for (const k of Object.keys(map2)) {
+        const v = map2[k];
+        const arr = Array.isArray(v) ? v : v?.entries ?? v?.items ?? [];
+        if (Array.isArray(arr)) arr.forEach((c) => {
+          const cid = c?.sessionId ?? c?.id;
+          if (typeof cid === "string") subKids.add(cid);
+        });
+      }
+    } catch {
+    }
     const titleOf = (sid) => byId[sid]?.title ?? byId[sid]?.displayTitle ?? sid;
     const mk = (sid) => ({ id: sid, title: titleOf(sid), isCurrent: sid === current });
     try {
@@ -21534,41 +21738,7 @@ function hideBindTip() {
 async function promptIntoSession(sessionId, text2) {
   const b = sessionBridge;
   if (!b) throw new Error("bridge unavailable");
-  const sessions = b.sessions;
-  let session = null;
-  for (let i = 0; i < 10; i++) {
-    try {
-      session = sessions?.binding?.(sessionId)?.session ?? null;
-    } catch {
-      session = null;
-    }
-    if (session) break;
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  if (session) {
-    if (typeof b.conversation?.sendSession === "function") {
-      try {
-        await b.conversation.sendSession(session, text2, [], "queue");
-        return;
-      } catch {
-      }
-    }
-    if (typeof session.prompt === "function") {
-      const result = await session.prompt([{ type: "text", text: text2 }], "queue");
-      if (result && result.ok) return;
-      if (result && !result.ok) throw new Error("session.prompt: " + (result.error?.code ?? "rejected") + (result.error?.message ? ": " + result.error.message : ""));
-    }
-  }
-  try {
-    const scoped = sessions?.scope?.(sessionId);
-    const conv = scoped?.get?.("conversation");
-    if (conv && typeof conv.send === "function") {
-      await conv.send(text2);
-      return;
-    }
-  } catch {
-  }
-  throw new Error("no send path: session face unavailable");
+  await sendHostSession(b, sessionId, text2);
 }
 var KNOWLEDGE_PACK = [
   "\u3010\u63D2\u4EF6\u77E5\u8BC6\u5305\xB7\u8BF7\u76F4\u63A5\u91C7\u7528\uFF0C\u4E0D\u8981\u91CD\u65B0\u4FA6\u5BDF\u63D2\u4EF6\u6E90\u7801\u3011",
@@ -21582,12 +21752,12 @@ var KNOWLEDGE_PACK = [
   "  \u754C\u9762\u5373\u53EF\u4E0E DSH \u539F\u751F\u98CE\u683C\u4E00\u81F4\uFF1B\u81EA\u9020\u6837\u5F0F\u63A7\u5236\u5728\u6700\u5C0F\u8303\u56F4\u3002",
   "- \u670D\u52A1\u7AEF\u80FD\u529B\uFF1A/api/worktable/fs\uFF08\u5217\u76EE\u5F55\uFF09\u3001/api/worktable/write\uFF08\u5199\u6587\u4EF6\uFF09\u3001/api/worktable/mkdir\uFF08\u5EFA\u76EE\u5F55\uFF09\u3001",
   "  /api/worktable/git\uFF08git \u72B6\u6001\uFF09\u3001/api/worktable/site\uFF08\u9759\u6001\u6258\u7BA1\uFF09\u3002",
-  "- \u6539\u5B8C\u63D2\u4EF6\u5728 01_content \u76EE\u5F55\u6267\u884C npm run build\uFF1B\u91CD\u542F dsh web \u6216\u6D4F\u89C8\u5668 F5 \u751F\u6548\u3002",
+  "- \u6539\u5B8C\u63D2\u4EF6\u5728 01_content \u76EE\u5F55\u6267\u884C npm run build\uFF1B\u7F51\u9875\u7AEF\u91CD\u542F dsh web \u5E76\u5237\u65B0\uFF0C\u684C\u9762\u7AEF\u5B8C\u6574\u9000\u51FA\u540E\u624B\u52A8\u91CD\u65B0\u6253\u5F00\u3002",
   "- \u6240\u6709\u4EA7\u51FA\u6587\u4EF6\u4E00\u5F8B\u653E\u8FDB\u672C\u4EFB\u52A1\u6807\u6CE8\u7684\u9879\u76EE\u6587\u4EF6\u5939\uFF0C\u4FDD\u6301\u7528\u6237\u76EE\u5F55\u5E72\u51C0\u3002",
   "- \u6807\u6CE8\u534F\u8BAE\uFF1A\u6536\u5230\u300C\u{1F4CC} \u6807\u6CE8-\u7A97\u53E3N \u2026\uFF08\u5750\u6807/\u5143\u7D20/\u6846\u5185\u6587\u5B57\u2026\uFF09\u2026\u300D= \u5DE5\u4F5C\u53F0\u6807\u6CE8\uFF08\u7A97\u53E3\u7F16\u53F7\u7EA6\u5B9A\uFF1A\u5DE6\u680F\u2192\u9876\u884C\u2192\u4E3B\u884C\uFF0C\u4ECE 1 \u8D77\uFF09\u3002",
   "  \u5904\u7406\uFF1A\u6807\u6CE8\u5DF2\u6807\u660E\u6846\u9009\u533A\u57DF\u4E0E\u300C\u6700\u53EF\u80FD\u76EE\u6807\u300D\u65F6\u76F4\u63A5\u4F5C\u7B54\u3001\u4E0D\u8981\u4E8C\u6B21\u8BE2\u95EE\uFF08\u4EC5\u5F53\u786E\u5B9E\u65E0\u6CD5\u4ECE\u6807\u6CE8\u5B9A\u4F4D\u65F6\u624D\u95EE\u4E00\u6B21\uFF09\uFF1B\u80FD\u67E5\u770B\u622A\u56FE\u6216\u6253\u5F00\u7A97\u53E3\u5219\u5148\u6838\u5B9E\u518D\u56DE\u7B54\u3002"
 ].join("\n");
-function buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, mode) {
+function buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, mode, widgetBindings = []) {
   const win = windowLabel || "\u4E00\u4E2A\u5185\u5BB9\u7A97";
   const folderLine = folder ? "\u9879\u76EE\u6587\u4EF6\u5939\uFF1A" + folder + "\uFF08\u672C\u9879\u76EE\u6240\u6709\u4EA7\u51FA\u6587\u4EF6\u4E00\u5F8B\u653E\u8FDB\u8FD9\u4E2A\u6587\u4EF6\u5939\uFF1B\u4E0D\u8981\u5199\u5230\u522B\u7684\u9ED8\u8BA4\u4F4D\u7F6E\uFF09\u3002" : "\u672C\u9879\u76EE\u6682\u672A\u8BBE\u7F6E\u4E13\u5C5E\u6587\u4EF6\u5939\uFF1A\u4EA7\u51FA\u6587\u4EF6\u5148\u5411\u7528\u6237\u786E\u8BA4\u5B58\u653E\u4F4D\u7F6E\uFF0C\u4E0D\u8981\u968F\u4FBF\u5199\u3002";
   const lines = [
@@ -21601,8 +21771,9 @@ function buildWindowTaskText(projectId, projectName, windowLabel, requirement, f
     "   - \u6587\u6863 / \u6F14\u793A\uFF08PPT\u3001\u62A5\u544A\u3001\u8868\u683C\uFF09\u2192 \u751F\u6210\u771F\u5B9E\u6587\u4EF6\uFF08.pptx / .md / .xlsx\uFF09\u653E\u8FDB\u9879\u76EE\u6587\u4EF6\u5939\uFF0C\u7528\u6237\u7528\u672C\u673A\u8F6F\u4EF6\u6253\u5F00\u7F16\u8F91\uFF1B",
     "   - \u89C6\u9891 / \u52A8\u753B \u2192 \u751F\u6210 .mp4 / .gif\uFF08\u6216 Lottie JSON\uFF09\u6587\u4EF6\u653E\u8FDB\u9879\u76EE\u6587\u4EF6\u5939\uFF1B",
     "   - \u5DE5\u4F5C\u53F0\u5DF2\u6709\u5185\u7F6E\u7A97\u80FD\u529B\uFF08\u8D44\u6E90\u7BA1\u7406\u5668 / \u7EC8\u7AEF / \u6D4F\u89C8\u5668 / \u52A8\u753B\u7AD9\uFF09\u2192 \u4E0D\u8981\u91CD\u590D\u9020\u8F6E\u5B50\uFF0C\u76F4\u63A5\u5EFA\u8BAE\u7528\u6237\u6539\u7528\u5185\u7F6E\u7A97\u3002",
-    "5. \u5B8C\u6210\u5185\u5BB9\u540E\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u544A\u77E5\u7528\u6237\u6302\u8F7D\u7ED3\u679C\uFF08\u4E0D\u8981\u63D0\u95EE\u3001\u4E0D\u8981\u7B49\u5F85\u7528\u6237\u786E\u8BA4\uFF09\uFF1A\u4F8B\u5982\u300C\u5DF2\u5B8C\u6210\u5E76\u81EA\u52A8\u6302\u5230\u300C" + win + "\u300D\u7A97\u53E3\uFF0C\u60F3\u8C03\u6574\u76F4\u63A5\u8BF4\uFF0C\u6211\u6539\u5B8C\u4F1A\u81EA\u52A8\u66F4\u65B0\u300D\u3002\u8BE5\u7A97\u53E3\u4F4D\u4E8E\u300C" + projectName + "\u300D\u9879\u76EE\u5185\uFF0C\u5982\u9700\u8981\u4E5F\u53EF\u534F\u52A9\u8BE5\u9879\u76EE\u540E\u7EED\u7684\u5176\u4ED6\u81EA\u5B9A\u4E49\u5DE5\u4F5C\u3002",
-    '6. \u5B8C\u6210\u540E\u5199\u5165\u300C\u4EA7\u7269\u6E05\u5355\u300D\u6587\u4EF6\uFF1A\u5728\u9879\u76EE\u6587\u4EF6\u5939\u91CC\u521B\u5EFA widget-result.json\u3002\u6302\u8F7D\u5355\u4E2A\u7A97\u53E3\u65F6\u5199\u5355\u5BF9\u8C61 {"window":"' + win + '","path":"\u4EA7\u7269\u76F8\u5BF9\u8DEF\u5F84","kind":"html"}\uFF1B\u4E00\u6B21\u6302\u8F7D\u591A\u4E2A\u7A97\u53E3\uFF08\u5982\u7A97\u53E31 + \u7A97\u53E32\uFF09\u65F6\u5199 JSON \u6570\u7EC4\uFF0C\u6BCF\u4E2A\u5143\u7D20\u4E3A\u4E0A\u8FF0\u5355\u5BF9\u8C61\uFF08\u53EF\u5F15\u7528\u591A\u4E2A\u4EA7\u7269\u6587\u4EF6\uFF09\u3002kind \u53EF\u9009 html\uFF08\u672C\u5730\u9875\u9762\uFF0Cpath \u76F8\u5BF9\u9879\u76EE\u6587\u4EF6\u5939\uFF09/ url\uFF08\u5916\u90E8\u94FE\u63A5\uFF0Cpath \u4E3A\u5B8C\u6574 URL\uFF09/ file\uFF08\u5176\u4ED6\u6587\u4EF6\uFF0Cpath \u76F8\u5BF9\u9879\u76EE\u6587\u4EF6\u5939\uFF09\u3002\u5199\u5B8C\u8FD9\u4E2A\u6587\u4EF6\uFF0C\u5DE5\u4F5C\u53F0\u4F1A\u81EA\u52A8\u628A\u4EA7\u7269\u6302\u8F7D\u8FDB\u6E05\u5355\u5BF9\u5E94\u7684\u5404\u4E2A\u7A97\u53E3\u5E76\u9501\u5B9A\u4FDD\u5B58\uFF0C\u7528\u6237\u65E0\u9700\u624B\u52A8\u64CD\u4F5C\uFF1B\u7528\u6237\u4E0B\u6B21\u6253\u5F00\u5DE5\u4F5C\u53F0\u65F6\u5404\u7A97\u53E3\u76F4\u63A5\u663E\u793A\u4EA7\u7269\uFF0C\u4E0D\u4F1A\u4E22\u5931\u6216\u91CD\u7F6E\u3002',
+    "5. \u5B8C\u6210\u540E\u7528\u4E00\u4E24\u53E5\u8BDD\u8BF4\u660E\u4F5C\u54C1\u4E0E\u76EE\u6807\u7A97\u53E3\u3002\u5199\u6E05\u5355\u4E0D\u4EE3\u8868\u754C\u9762\u5DF2\u786E\u8BA4\u6302\u8F7D\u6210\u529F\uFF1B\u53EA\u6709\u5B9E\u9645\u770B\u5230\u6302\u8F7D\u7ED3\u679C\u65F6\uFF0C\u624D\u8BF4\u300C\u5DF2\u6302\u8F7D\u300D\u3002\u8BE5\u7A97\u53E3\u5C5E\u4E8E\u300C" + projectName + "\u300D\u9879\u76EE\u3002",
+    "6. \u4EA7\u7269\u63E1\u624B v2\uFF1A\u53EA\u4F7F\u7528\u4E0B\u5217\u672C\u9879\u76EE\u4E13\u5C5E\u6E05\u5355\u8DEF\u5F84\uFF0C\u4E0D\u8BFB\u5199\u9879\u76EE\u6839\u76EE\u5F55\u65E7\u7684 widget-result.json\uFF0C\u4E5F\u4E0D\u8981\u590D\u7528\u5176\u4ED6\u9879\u76EE\u7684\u6E05\u5355\u3002\u4F5C\u54C1\u4ECD\u653E\u5728\u9879\u76EE\u6587\u4EF6\u5939\uFF0Cpath \u6309\u8BE5\u6587\u4EF6\u5939\u89E3\u6790\u3002\u5148\u5B8C\u6210\u4F5C\u54C1\uFF0C\u518D\u521B\u5EFA\u6E05\u5355\u7236\u76EE\u5F55\u5E76\u5199\u5165\u5BF9\u5E94 JSON\uFF1Bkind \u4E3A html / url / file\uFF0C\u66FF\u6362\u793A\u4F8B\u4E2D\u7684 path \u4E0E kind\uFF0C\u5176\u4ED6\u8EAB\u4EFD\u5B57\u6BB5\u4FDD\u6301\u539F\u6837\u3002\u4E00\u6B21\u751F\u6210\u591A\u4E2A\u7A97\u53E3\u65F6\u5206\u522B\u5199\u5404\u7A97\u53E3\u7684\u6E05\u5355\u3002\u4EE5\u540E\u5728\u672C\u4F1A\u8BDD\u91CC\u7EE7\u7EED\u4FEE\u6539\u540C\u540D\u4F5C\u54C1\uFF0C\u4ECD\u66F4\u65B0\u8FD9\u4E2A\u6E05\u5355\uFF1B\u4E0D\u5F97\u6839\u636E\u6E05\u5355\u6587\u4EF6\u540D\u53D8\u5316\u4E0E\u5426\u5224\u65AD\u662F\u5426\u5B8C\u6210\u3002",
+    widgetBindings.length ? widgetBindings.map((b) => b.window + "\uFF1A" + widgetManifestPath(b) + "\n" + JSON.stringify({ version: 2, projectId: b.projectId, paneId: b.paneId, bindingId: b.bindingId, window: b.window, path: "\u4EA7\u7269\u76F8\u5BF9\u8DEF\u5F84", kind: "html" })).join("\n") : "\u5F53\u524D\u6CA1\u6709\u6709\u6548\u7684\u81EA\u52A8\u6302\u8F7D\u7ED1\u5B9A\uFF0C\u8BF7\u7528\u6237\u4ECE\u76EE\u6807\u7A97\u53E3\u91CD\u65B0\u53D1\u9001\u81EA\u5B9A\u4E49\u4EFB\u52A1\uFF1B\u4E0D\u8981\u5199\u65E7\u6E05\u5355\u731C\u6D4B\u5F52\u5C5E\u3002",
     KNOWLEDGE_PACK
   ];
   return lines.join("\n");
@@ -21610,7 +21781,6 @@ function buildWindowTaskText(projectId, projectName, windowLabel, requirement, f
 async function createCustomSession(projectId, projectName, requirement, group, windowLabel = "", folder = null) {
   const b = sessionBridge;
   if (!b || typeof b.sessions?.create !== "function") throw new Error("sessions unavailable");
-  const text2 = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, "new");
   let workspaceId = null;
   const g = group ?? { kind: "none" };
   if (g.kind === "existing") {
@@ -21639,20 +21809,29 @@ async function createCustomSession(projectId, projectName, requirement, group, w
   let createOpts = {};
   if (workspaceId) createOpts = { workspaceId };
   else if (folder) createOpts = { cwd: folder };
-  const sessionId = await b.sessions.create(createOpts);
+  const sessionId = await createHostSession(b.sessions, b.workspaces, createOpts, g.kind === "none" ? "none" : "auto");
   await ensureSessionPreset(sessionId);
   await ensureSessionModel(sessionId);
   markPluginSessionOpen(sessionId);
-  openMainSession(sessionId);
+  try {
+    await openHostSession(clientCtx, b.sessions, sessionId);
+  } catch {
+  }
+  const widgetBindings = prepareWidgetTask(projectId, folder, sessionId, windowLabel);
+  const text2 = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, "new", widgetBindings);
   await promptIntoSession(sessionId, text2);
   return sessionId;
 }
 async function sendCustomToSession(sessionId, projectId, projectName, requirement, windowLabel = "", folder = null) {
   const b = sessionBridge;
   if (!b) throw new Error("bridge unavailable");
-  const text2 = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, "send");
+  const widgetBindings = prepareWidgetTask(projectId, folder, sessionId, windowLabel);
+  const text2 = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, "send", widgetBindings);
   markPluginSessionOpen(sessionId);
-  openMainSession(sessionId);
+  try {
+    await openHostSession(clientCtx, b.sessions, sessionId);
+  } catch {
+  }
   await promptIntoSession(sessionId, text2);
 }
 var projectAttachRef = { sessionId: null, attached: null };
@@ -21687,116 +21866,55 @@ function saveNotifyAck(sid, state) {
   }
 }
 var mountConsumedRef = { current: /* @__PURE__ */ new Set() };
+var widgetRegistry = new WidgetMountRegistry((() => {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+})());
+var widgetProjectOf = () => ({});
+function prepareWidgetTask(projectId, folder, sessionId, windowLabel) {
+  if (!folder) return [];
+  const current = widgetProjectOf(projectId);
+  if (!folder || current.folder !== folder || !current.spec) throw new Error("project folder or window changed");
+  return widgetRegistry.begin(projectId, current.spec, folder, sessionId, windowLabel);
+}
 var pendingMountRef = { current: (() => {
   try {
-    return JSON.parse(localStorage.getItem("dsh.worktable.pendingMount.v1") ?? "{}") ?? {};
+    return JSON.parse(localStorage.getItem("dsh.worktable.pendingMount.v2") ?? "{}") ?? {};
   } catch {
     return {};
   }
 })() };
 var mountedWidgetRef = { current: (() => {
   try {
-    return JSON.parse(localStorage.getItem("dsh.worktable.mountedWidget.v1") ?? "{}") ?? {};
+    return JSON.parse(localStorage.getItem("dsh.worktable.mountedWidget.v2") ?? "{}") ?? {};
   } catch {
     return {};
   }
 })() };
-function recordMountedWidget(projectId, raw) {
-  if (!projectId || !raw) return;
-  mountedWidgetRef.current[projectId] = raw;
+var widgetReadSeqRef = { current: {} };
+function recordMountedWidget(bindingId, raw) {
+  if (!bindingId || !raw) return;
+  mountedWidgetRef.current[bindingId] = raw;
   try {
-    localStorage.setItem("dsh.worktable.mountedWidget.v1", JSON.stringify(mountedWidgetRef.current));
+    localStorage.setItem("dsh.worktable.mountedWidget.v2", JSON.stringify(mountedWidgetRef.current));
   } catch {
   }
 }
-var widgetManifestCache = { current: {} };
-var widgetListeners = /* @__PURE__ */ new Map();
-function notifyWidgets(projectId) {
-  delete productCache.current[projectId];
-  const set = widgetListeners.get(projectId);
-  if (!set) return;
-  for (const fn of [...set]) {
-    try {
-      fn();
-    } catch {
-    }
-  }
-}
-async function readWidgetManifest(projectId, folder, force = false) {
-  if (!force && widgetManifestCache.current[projectId] !== void 0) return widgetManifestCache.current[projectId];
+function persistPendingWidgets() {
   try {
-    const r = await fetch("/api/worktable/file?path=" + encodeURIComponent(joinPath(folder, "widget-result.json")), { cache: "no-store" });
-    const raw = r.ok ? (await r.text()).trim() : "";
-    widgetManifestCache.current[projectId] = raw;
-    return raw;
+    localStorage.setItem("dsh.worktable.pendingMount.v2", JSON.stringify(pendingMountRef.current));
   } catch {
-    return widgetManifestCache.current[projectId] ?? "";
   }
 }
-function widgetTitleOf(it) {
-  const p = String(it?.path ?? "").trim();
-  if (it?.kind === "url") return p;
-  return basenameOf(p) || p;
-}
-var productCache = { current: {} };
-function htmlProductCandidates(top, children) {
-  const isHtml = (n) => /\.html?$/i.test(n);
-  const out = [];
-  for (const e of top ?? []) {
-    if (!e || e.isDir || !isHtml(String(e.name ?? ""))) continue;
-    out.push({ key: "f:" + e.path, title: String(e.name), kind: "html" });
+function invalidateWidgetProject(projectId) {
+  widgetRegistry.revokeProject(projectId);
+  for (const [id, pending] of Object.entries(pendingMountRef.current)) {
+    if (pending?.binding?.projectId === projectId) delete pendingMountRef.current[id];
   }
-  for (const dir of children ?? []) {
-    for (const e of dir?.entries ?? []) {
-      if (!e || e.isDir || !isHtml(String(e.name ?? ""))) continue;
-      out.push({ key: "f:" + e.path, title: String(dir.name) + "/" + String(e.name), kind: "html" });
-    }
-  }
-  return out.slice(0, 12);
-}
-async function scanHtmlProducts(folder) {
-  const SKIP = /* @__PURE__ */ new Set([".git", ".dsh", "node_modules"]);
-  const listDir = async (path) => {
-    try {
-      const r = await fetch("/api/worktable/fs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path })
-      });
-      const d = await r.json();
-      return Array.isArray(d?.entries) ? d.entries : [];
-    } catch {
-      return [];
-    }
-  };
-  const top = await listDir(folder);
-  const dirs = top.filter((e) => e?.isDir && !SKIP.has(String(e.name)) && !String(e.name).startsWith(".")).slice(0, 8);
-  const children = [];
-  for (const d of dirs) children.push({ name: String(d.name), entries: await listDir(String(d.path)) });
-  return htmlProductCandidates(top, children);
-}
-function windowLabelToPane(spec, label) {
-  const m = /^窗口(\d+)$/.exec(String(label ?? "").trim());
-  if (!m) return null;
-  const n = parseInt(m[1], 10);
-  if (!Number.isFinite(n) || n < 1) return null;
-  let idx = n - 1;
-  if (spec?.left) {
-    if (idx === 0) return { row: "left", index: 0 };
-    idx -= 1;
-  }
-  const top = spec?.top ?? [];
-  if (idx < top.length) return { row: "top", index: idx };
-  idx -= top.length;
-  const main = spec?.main ?? [];
-  if (idx < main.length) return { row: "main", index: idx };
-  return null;
-}
-function paneExists(spec, row, index) {
-  if (!spec) return false;
-  if (row === "left") return !!spec.left && index === 0;
-  if (row === "top") return !!spec.top && !!spec.top[index];
-  return !!spec.main && !!spec.main[index];
+  persistPendingWidgets();
 }
 function buildMountContent(folder, d) {
   const p = String(d?.path ?? "").trim();
@@ -21826,10 +21944,21 @@ function sessionNotifyState(entry) {
   if (entry.completed === true) return "done";
   return null;
 }
+var sessionStatusSource = null;
+var sessionConversationSource = null;
+var adaptSessionSnapshot = createSessionSnapshotAdapter();
+function pendingAckForSession(sid) {
+  let face;
+  try {
+    face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.();
+  } catch {
+  }
+  return pendingAckOf(sessionsSnapshotStore.snapshot, sid, face);
+}
 function syncSessionScope(list2) {
   try {
-    const snap = list2.getSnapshot();
-    const current = currentMainSessionId() || (snap?.current ?? "");
+    const snap = adaptSessionSnapshot(list2.getSnapshot(), sessionStatusSource);
+    const current = currentSessionOf(snap);
     const entry = snap?.byId?.[current] ?? snap?.items?.find((it) => it.sessionId === current) ?? null ?? null;
     const cat = snap?.subagentsByParent?.[current];
     let subagents = [];
@@ -22043,6 +22172,7 @@ function WorktableSection(props) {
   const [consoleName, setConsoleName] = (0, import_react2.useState)("");
   const [consoleErr, setConsoleErr] = (0, import_react2.useState)(false);
   const [consoleBusy, setConsoleBusy] = (0, import_react2.useState)(false);
+  const consoleNeedsWorkspace = blankSessionNeedsWorkspace(sessionBridge?.sessions, consoleMode === "none" ? "none" : "auto");
   const [customOpen, setCustomOpen] = (0, import_react2.useState)(false);
   const [customLayoutText, setCustomLayoutText] = (0, import_react2.useState)("");
   const [copiedToast, setCopiedToast] = (0, import_react2.useState)(null);
@@ -22080,32 +22210,13 @@ function WorktableSection(props) {
     const pr = projectsRef.current;
     const snap = sessionsSnapshotStore.snapshot;
     const byId = snap?.byId ?? {};
-    const jobsMap = snap?.jobsBySession ?? {};
     const now = Date.now();
-    const kidsSetOf = (sid) => {
-      const set = /* @__PURE__ */ new Set();
-      for (const [cid, ce] of Object.entries(byId)) if (ce?.parentId === sid) set.add(cid);
-      const v = (snap?.subagentsByParent ?? {})[sid];
-      const arr = Array.isArray(v) ? v : v?.entries ?? v?.items ?? [];
-      if (Array.isArray(arr)) arr.forEach((c) => {
-        const cid = c?.sessionId ?? c?.id;
-        if (typeof cid === "string") set.add(cid);
-      });
-      return set;
-    };
+    const kidsSetOf = (sid) => childSessionIdsOf(snap, sid);
     const statusOf = (sid) => {
       if (!sid) return "idle";
       const e = byId[sid];
       if (!e) return "idle";
-      if (sessionNotifyState(e) === "need") return "need";
-      for (const cid of kidsSetOf(sid)) {
-        if (byId[cid] && sessionNotifyState(byId[cid]) === "need") return "need";
-      }
-      try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.();
-        if (Array.isArray(face?.pending) && face.pending.length > 0) return "need";
-      } catch {
-      }
+      if (pendingAckForSession(sid) != null) return "need";
       if (e.completed === true) return "done";
       try {
         const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.();
@@ -22117,36 +22228,13 @@ function WorktableSection(props) {
     };
     const runtimeOf = (sid) => {
       if (!sid) return null;
-      const e = byId[sid];
-      if (!e || e.running !== true) return null;
-      let start = null;
-      const jobs = jobsMap[sid] ?? [];
-      for (const j of jobs) {
-        if (j?.status === "running" && typeof j.startedAt === "number" && (start == null || j.startedAt < start)) start = j.startedAt;
-      }
-      if (start != null) return Math.max(0, now - start);
-      try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.();
-        const timings = face?.turnTimings;
-        if (timings instanceof Map) {
-          for (const t2 of Array.from(timings.values()).reverse()) {
-            if (t2 && typeof t2.startTime === "number" && t2.endTime == null) return Math.max(0, now - t2.startTime);
-          }
-        } else if (timings && typeof timings === "object") {
-          for (const k of Object.keys(timings).reverse()) {
-            const t2 = timings[k];
-            if (t2 && typeof t2.startTime === "number" && t2.endTime == null) return Math.max(0, now - t2.startTime);
-          }
-        }
-      } catch {
-      }
-      return null;
+      return sessionRuntimeMs(snap, sid, sessionBridge?.sessions, sessionConversationSource, now);
     };
     const ackMap = loadNotifyAck();
     const make = (id, name, icon, self2) => {
       const sid = pr.projects.bindings[id];
       const status = statusOf(sid);
-      const glow = !!sid && (status === "done" && ackMap[sid] !== "done" || status === "need" && ackMap[sid] !== "need");
+      const glow = !!sid && (status === "done" && ackMap[sid] !== "done" || status === "need" && ackMap[sid] !== pendingAckForSession(sid));
       return {
         id,
         name,
@@ -22187,6 +22275,7 @@ function WorktableSection(props) {
   };
   (0, import_react2.useEffect)(() => {
     const env = {
+      fillHostInput: (text2) => appendHostInput(sessionBridge, text2),
       getScope: () => {
         const s = sessionScopeStore.snapshot;
         return s ? { sessionId: s.sessionId, cwd: s.cwd } : null;
@@ -22350,34 +22439,6 @@ function WorktableSection(props) {
           openMainSession(sid);
         }
       },
-      // 项目产物清单（widget-result.json）：分栏标题栏「📦」按钮的数据与动作
-      widgets: {
-        subscribe: (pid, fn) => {
-          let set = widgetListeners.get(pid);
-          if (!set) {
-            set = /* @__PURE__ */ new Set();
-            widgetListeners.set(pid, set);
-          }
-          set.add(fn);
-          return () => {
-            const s = widgetListeners.get(pid);
-            if (!s) return;
-            s.delete(fn);
-            if (s.size === 0) widgetListeners.delete(pid);
-          };
-        },
-        list: (pid) => listWidgetEntries(pid),
-        mount: (pid, index) => {
-          void mountWidgetEntry(pid, index);
-        },
-        products: (pid) => listProducts(pid),
-        mountProduct: (pid, key, row, paneIndex) => {
-          try {
-            mountProductInto(pid, key, row, paneIndex);
-          } catch {
-          }
-        }
-      },
       projectSessions: {
         hasFolder: (pid) => !!projectsRef.current.projects.folders[pid],
         list: (pid, fallbackTitle) => buildSessionMenuModel(projectsRef.current.projects.folders[pid] ?? null, fallbackTitle),
@@ -22495,7 +22556,12 @@ function WorktableSection(props) {
     if (!splitStore.active) {
       if (!suppressRestoreRef.current) {
         const prev = projectAttachRef.sessionId;
-        if (prev) openMainSession(prev);
+        if (prev) {
+          try {
+            openHostSession(clientCtx, sessionBridge?.sessions, prev);
+          } catch {
+          }
+        }
       }
       projectAttachRef.sessionId = null;
       projectAttachRef.attached = null;
@@ -22511,8 +22577,16 @@ function WorktableSection(props) {
         return { ...prev, views: { ...prev.views, [spec.id]: spec } };
       });
     };
+    splitStore.onPaneContentEdited = (projectId, paneId) => {
+      widgetRegistry.revokePane(projectId, paneId);
+      for (const [id, p] of Object.entries(pendingMountRef.current)) {
+        if (p?.binding?.projectId === projectId && p.binding.paneId === paneId) delete pendingMountRef.current[id];
+      }
+      persistPendingWidgets();
+    };
     return () => {
       splitStore.onSpecMutated = null;
+      splitStore.onPaneContentEdited = null;
     };
   }, []);
   (0, import_react2.useEffect)(() => {
@@ -22699,23 +22773,9 @@ function WorktableSection(props) {
       } catch {
       }
       ackProjectNotify(spec.id);
-      const pending = pendingMountRef.current[spec.id];
-      if (pending) {
-        try {
-          const entries = Array.isArray(pending.entries) ? pending.entries : pending.content ? [{ content: pending.content, row: pending.row, index: pending.index ?? 0 }] : [];
-          let allOk = entries.length > 0;
-          for (const e of entries) {
-            splitStore.lockPane(e.row, e.index ?? 0, e.content);
-            if (!paneExists(splitStore.spec, e.row, e.index ?? 0)) allOk = false;
-          }
-          if (allOk && pending.fingerprint) recordMountedWidget(spec.id, pending.fingerprint);
-        } catch {
-        }
-        delete pendingMountRef.current[spec.id];
-        try {
-          localStorage.setItem("dsh.worktable.pendingMount.v1", JSON.stringify(pendingMountRef.current));
-        } catch {
-        }
+      for (const pending of Object.values(pendingMountRef.current)) {
+        if (pending?.binding?.projectId !== spec.id) continue;
+        void applyWidgetManifest(pending.binding, null, true);
       }
     }
   }, [projects.views]);
@@ -22728,12 +22788,20 @@ function WorktableSection(props) {
     splitStore.open(spec);
     if (splitStore.active && splitStore.spec?.id === CONSOLE_ID) {
       let prev = null;
-      prev = currentMainSessionId() || null;
+      try {
+        prev = currentSessionOf(sessionBridge?.list?.getSnapshot?.()) || null;
+      } catch {
+      }
       projectAttachRef.sessionId = prev;
       const raw = explicitBound !== void 0 ? explicitBound : projectsRef.current.projects.bindings[CONSOLE_ID];
       const bound = raw && !isSubagentSessionId(raw) ? raw : null;
       projectAttachRef.attached = bound ?? prev;
-      if (bound) openMainSession(bound);
+      if (bound) {
+        try {
+          openHostSession(clientCtx, sessionBridge?.sessions, bound);
+        } catch {
+        }
+      }
       ackProjectNotify(CONSOLE_ID);
       try {
         notifyConsole();
@@ -22777,6 +22845,11 @@ function WorktableSection(props) {
       setConsoleErr(true);
       return;
     }
+    if (blankSessionNeedsWorkspace(b.sessions, consoleMode === "none" ? "none" : "auto")) return;
+    if (consoleMode === "existing" && !consoleWsId) {
+      setConsoleErr(true);
+      return;
+    }
     if (consoleMode === "new" && (!consoleParent.trim() || !consoleName.trim())) {
       setConsoleErr(true);
       return;
@@ -22809,7 +22882,7 @@ function WorktableSection(props) {
       let createOpts = {};
       if (workspaceId) createOpts = { workspaceId };
       else if (folder) createOpts = { cwd: folder };
-      const sessionId = await b.sessions.create(createOpts);
+      const sessionId = await createHostSession(b.sessions, b.workspaces, createOpts, consoleMode === "none" ? "none" : "auto");
       await ensureSessionPreset(sessionId);
       await ensureSessionModel(sessionId);
       markPluginSessionOpen(sessionId);
@@ -22912,6 +22985,7 @@ function WorktableSection(props) {
       setWsFolderParent(p);
       setWsFolderError(false);
     } else if (bindPick) {
+      if (projectsRef.current.projects.folders[bindPick.id] !== p) invalidateWidgetProject(bindPick.id);
       persistProjects((prev) => ({ ...prev, folders: { ...prev.folders, [bindPick.id]: p } }));
     }
     setManualPathFor(null);
@@ -22921,10 +22995,12 @@ function WorktableSection(props) {
   const changeBindFolder = () => {
     if (!bindPick || pickBusyRef.current) return;
     pickFolder("bind", (p) => {
+      if (projectsRef.current.projects.folders[bindPick.id] !== p) invalidateWidgetProject(bindPick.id);
       persistProjects((prev) => ({ ...prev, folders: { ...prev.folders, [bindPick.id]: p } }));
     });
   };
   const setProjectBinding = (id, sessionId) => {
+    if ((projectsRef.current.projects.bindings[id] ?? null) !== sessionId) invalidateWidgetProject(id);
     persistProjects((prev) => {
       const next = { ...prev.bindings };
       if (sessionId) next[id] = sessionId;
@@ -22982,248 +23058,81 @@ function WorktableSection(props) {
   (0, import_react2.useEffect)(() => {
     notifyConsole();
   }, [projects]);
-  const applyWidgetManifest = (0, import_react2.useCallback)(async (projectId, rawManifest) => {
-    const folder = projectsRef.current.projects.folders[projectId];
-    if (!folder) return;
+  const [widgetTick, setWidgetTick] = (0, import_react2.useState)(0);
+  (0, import_react2.useEffect)(() => widgetRegistry.subscribe(() => setWidgetTick((n) => n + 1)), []);
+  const applyWidgetManifest = (0, import_react2.useCallback)(async (binding, rawManifest, force = false) => {
+    let current = widgetProjectOf(binding.projectId);
+    if (!mountedRef.current || !widgetRegistry.isCurrent(binding, current.spec, current.folder)) return;
+    const readSeq = (widgetReadSeqRef.current[binding.bindingId] ?? 0) + 1;
+    widgetReadSeqRef.current[binding.bindingId] = readSeq;
     try {
       let raw = rawManifest;
       if (raw == null) {
-        raw = await readWidgetManifest(projectId, folder, true);
+        const r = await fetch("/api/worktable/file?path=" + encodeURIComponent(widgetManifestPath(binding)), { cache: "no-store" });
+        if (!r.ok) return;
+        raw = (await r.text()).trim();
       }
-      if (!raw) return;
-      let d = null;
-      try {
-        d = JSON.parse(raw);
-      } catch {
-      }
-      if (!d) return;
-      const items = Array.isArray(d) ? d : [d];
-      const open = splitStore.active && splitStore.spec?.id === projectId;
-      const saved = open ? splitStore.spec : projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId);
-      const targets = [];
-      for (const it of items) {
-        if (!it) continue;
-        const content = buildMountContent(folder, it);
-        if (!content) continue;
-        const pane = windowLabelToPane(saved, it.window);
-        const row = pane?.row ?? "main";
-        const index = pane?.index ?? 0;
-        if (targets.some((t2) => t2.row === row && t2.index === index)) continue;
-        targets.push({ row, index, content });
-      }
-      if (!targets.length) {
-        notifyWidgets(projectId);
-        return;
-      }
-      notifyWidgets(projectId);
+      current = widgetProjectOf(binding.projectId);
+      if (!mountedRef.current || !raw || widgetReadSeqRef.current[binding.bindingId] !== readSeq) return;
+      const resolved = widgetRegistry.resolve(binding, raw, current.spec, current.folder);
+      if (!resolved || !force && mountedWidgetRef.current[binding.bindingId] === raw) return;
+      const content = buildMountContent(binding.folder, resolved.item);
+      if (!content) return;
+      const open = splitStore.active && splitStore.spec?.id === binding.projectId;
       if (open) {
-        let allOk = true;
-        for (const t2 of targets) {
-          splitStore.lockPane(t2.row, t2.index, t2.content);
-          if (!paneExists(splitStore.spec, t2.row, t2.index)) allOk = false;
-        }
-        if (allOk) recordMountedWidget(projectId, raw);
+        splitStore.lockPane(resolved.target.row, resolved.target.index, content);
+        recordMountedWidget(binding.bindingId, raw);
+        delete pendingMountRef.current[binding.bindingId];
+        persistPendingWidgets();
       } else {
-        pendingMountRef.current[projectId] = { entries: targets, fingerprint: raw };
-        try {
-          localStorage.setItem("dsh.worktable.pendingMount.v1", JSON.stringify(pendingMountRef.current));
-        } catch {
-        }
+        pendingMountRef.current[binding.bindingId] = { binding };
+        persistPendingWidgets();
       }
     } catch {
     }
-  }, []);
-  const tryAutoMount = (0, import_react2.useCallback)(async (projectId, sid) => {
-    void sid;
-    await applyWidgetManifest(projectId, null);
-    notifyWidgets(projectId);
-  }, [applyWidgetManifest]);
-  const listWidgetEntries = (0, import_react2.useCallback)(async (projectId) => {
-    const folder = projectsRef.current.projects.folders[projectId];
-    if (!folder) return [];
-    const raw = await readWidgetManifest(projectId, folder);
-    if (!raw) return [];
-    let d = null;
-    try {
-      d = JSON.parse(raw);
-    } catch {
-      return [];
-    }
-    const items = Array.isArray(d) ? d : [d];
-    const open = splitStore.active && splitStore.spec?.id === projectId;
-    const spec = open ? splitStore.spec : projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId) ?? null;
-    const out = [];
-    items.forEach((it, i) => {
-      if (!it) return;
-      const content = buildMountContent(folder, it);
-      const pane = content ? windowLabelToPane(spec, it.window) : null;
-      out.push({
-        index: i,
-        window: String(it?.window ?? ""),
-        title: widgetTitleOf(it),
-        kind: String(it?.kind ?? "html"),
-        mountable: !!(pane && paneExists(spec, pane.row, pane.index))
-      });
-    });
-    return out;
-  }, []);
-  const mountWidgetEntry = (0, import_react2.useCallback)(async (projectId, index) => {
-    const folder = projectsRef.current.projects.folders[projectId];
-    if (!folder) return;
-    const raw = widgetManifestCache.current[projectId];
-    if (!raw) return;
-    let d = null;
-    try {
-      d = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    const items = Array.isArray(d) ? d : [d];
-    const entry = items[index];
-    if (!entry) return;
-    await applyWidgetManifest(projectId, JSON.stringify(entry));
-    recordMountedWidget(projectId, raw);
-  }, [applyWidgetManifest]);
-  const listProducts = (0, import_react2.useCallback)(async (projectId) => {
-    const cached = productCache.current[projectId];
-    if (cached) return cached;
-    const folder = projectsRef.current.projects.folders[projectId];
-    if (!folder) return [];
-    const raw = await readWidgetManifest(projectId, folder);
-    let out = [];
-    if (raw) {
-      let d = null;
-      try {
-        d = JSON.parse(raw);
-      } catch {
-      }
-      const items = Array.isArray(d) ? d : d ? [d] : [];
-      out = items.map((it, i) => ({ key: "m:" + i, title: widgetTitleOf(it), kind: String(it?.kind ?? "html") })).filter((x) => !!x.title);
-    } else {
-      out = await scanHtmlProducts(folder);
-    }
-    productCache.current[projectId] = out;
-    return out;
-  }, []);
-  const mountProductInto = (0, import_react2.useCallback)((projectId, key, row, paneIndex) => {
-    const folder = projectsRef.current.projects.folders[projectId];
-    if (!folder) return;
-    let content = null;
-    if (key.startsWith("m:")) {
-      let d = null;
-      try {
-        d = JSON.parse(widgetManifestCache.current[projectId] ?? "null");
-      } catch {
-      }
-      const items = Array.isArray(d) ? d : d ? [d] : [];
-      const it = items[Number(key.slice(2))];
-      if (it) content = buildMountContent(folder, it);
-    } else if (key.startsWith("f:")) {
-      const abs = key.slice(2);
-      if (abs) content = buildMountContent(folder, { path: abs, kind: "html" });
-    }
-    if (!content) return;
-    splitStore.lockPane(row, paneIndex, content);
-  }, []);
-  const seedRestoreFromManifest = (0, import_react2.useCallback)((projectId, raw) => {
-    const folder = projectsRef.current.projects.folders[projectId];
-    if (!folder || !raw) return;
-    let d = null;
-    try {
-      d = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    const items = Array.isArray(d) ? d : [d];
-    if (splitStore.active && splitStore.spec?.id === projectId) {
-      for (const it of items) {
-        if (!it) continue;
-        const content = buildMountContent(folder, it);
-        if (!content) continue;
-        const pane = windowLabelToPane(splitStore.spec, it.window);
-        if (!pane) continue;
-        splitStore.seedRestore(pane.row, pane.index, content);
-      }
-      return;
-    }
-    const saved = projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId);
-    if (!saved) return;
-    let next = saved;
-    for (const it of items) {
-      if (!it) continue;
-      const content = buildMountContent(folder, it);
-      if (!content) continue;
-      const pane = windowLabelToPane(saved, it.window);
-      if (!pane) continue;
-      const seeded = seedPaneRestore(next, pane.row, pane.index, content);
-      if (seeded) next = seeded;
-    }
-    if (next === saved) return;
-    persistProjects((prev) => {
-      if (prev.layouts.some((l) => l.id === projectId)) return { ...prev, layouts: prev.layouts.map((l) => l.id === projectId ? next : l) };
-      return { ...prev, views: { ...prev.views, [projectId]: next } };
-    });
   }, []);
   (0, import_react2.useEffect)(() => {
     const byId = sessionsSnapshotStore.snapshot?.byId ?? {};
+    const scopePairs = new Map(widgetRegistry.entries().map((b) => [JSON.stringify([b.projectId, b.sessionId]), b]));
+    for (const key of mountConsumedRef.current) if (!scopePairs.has(key)) mountConsumedRef.current.delete(key);
     for (const [pid, sid] of Object.entries(projects.bindings)) {
       const e = byId[sid];
       if (!e) continue;
       if (e.completed === true) {
         if (doneSeenRef.current[sid] !== true) clearNotifyAck(sid);
         doneSeenRef.current[sid] = true;
-        if (!mountConsumedRef.current.has(sid)) {
-          mountConsumedRef.current.add(sid);
-          tryAutoMount(pid, sid);
-        }
       } else {
         doneSeenRef.current[sid] = false;
-        mountConsumedRef.current.delete(sid);
       }
     }
-  }, [notifyTick, projects.bindings, tryAutoMount]);
+    for (const [key, binding] of scopePairs) {
+      const e = byId[binding.sessionId];
+      if (!e) continue;
+      if (e.completed !== true) {
+        mountConsumedRef.current.delete(key);
+        continue;
+      }
+      if (mountConsumedRef.current.has(key)) continue;
+      mountConsumedRef.current.add(key);
+      for (const b of widgetRegistry.entries(binding.projectId)) {
+        if (b.sessionId === binding.sessionId) void applyWidgetManifest(b, null, true);
+      }
+    }
+  }, [notifyTick, projects.bindings, widgetTick, applyWidgetManifest]);
   (0, import_react2.useEffect)(() => {
     let cancelled = false;
-    const folders = projects.folders ?? {};
     (async () => {
-      for (const pid of Object.keys(folders)) {
+      for (const binding of widgetRegistry.entries()) {
         if (cancelled) return;
-        const folder = folders[pid];
-        if (!folder) continue;
-        try {
-          const raw = await readWidgetManifest(pid, folder, true);
-          if (cancelled) return;
-          if (!raw) {
-            notifyWidgets(pid);
-            continue;
-          }
-          seedRestoreFromManifest(pid, raw);
-          notifyWidgets(pid);
-          if (mountedWidgetRef.current[pid] === raw) continue;
-          await applyWidgetManifest(pid, raw);
-        } catch {
-        }
+        await applyWidgetManifest(binding, null);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [projects.folders, applyWidgetManifest, seedRestoreFromManifest]);
+  }, [projects.folders, widgetTick, applyWidgetManifest]);
   const collectKids = (0, import_react2.useCallback)((sid) => {
-    const kids = /* @__PURE__ */ new Set();
-    const snap = sessionsSnapshotStore.snapshot;
-    const byId = snap?.byId ?? {};
-    for (const [cid, ce] of Object.entries(byId)) {
-      if (ce?.parentId === sid) kids.add(cid);
-    }
-    const subMap = snap?.subagentsByParent ?? {};
-    const v = subMap[sid];
-    const arr = Array.isArray(v) ? v : v?.entries ?? v?.items ?? [];
-    if (Array.isArray(arr)) arr.forEach((c) => {
-      const cid = c?.sessionId ?? c?.id;
-      if (typeof cid === "string") kids.add(cid);
-    });
-    return kids;
+    return childSessionIdsOf(sessionsSnapshotStore.snapshot, sid);
   }, []);
   const bindNotifyMap = (0, import_react2.useMemo)(() => {
     const map2 = {};
@@ -23233,29 +23142,16 @@ function WorktableSection(props) {
     for (const [pid, sid] of Object.entries(projects.bindings)) {
       const e = byId[sid];
       if (!e) continue;
-      let needNow = sessionNotifyState(e) === "need";
-      if (!needNow) {
-        for (const cid of collectKids(sid)) {
-          const ce = byId[cid];
-          if (ce && sessionNotifyState(ce) === "need") {
-            needNow = true;
-            break;
-          }
+      const pendingAck = pendingAckForSession(sid);
+      if (pendingAck !== seen[sid]) {
+        if (seen[sid] !== void 0) {
+          clearNotifyAck(sid);
+          delete ack[sid];
         }
+        seen[sid] = pendingAck;
       }
-      if (!needNow) {
-        try {
-          const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.();
-          if (Array.isArray(face?.pending) && face.pending.length > 0) needNow = true;
-        } catch {
-        }
-      }
-      if (needNow !== seen[sid]) {
-        if (seen[sid] !== void 0) clearNotifyAck(sid);
-        seen[sid] = needNow;
-      }
-      if (needNow) {
-        if (ack[sid] !== "need") map2[pid] = "need";
+      if (pendingAck != null) {
+        if (ack[sid] !== pendingAck) map2[pid] = "need";
         continue;
       }
       if (sessionNotifyState(e) === "done" && ack[sid] !== "done") {
@@ -23270,22 +23166,20 @@ function WorktableSection(props) {
     const sid = projectsRef.current.projects.bindings[projectId];
     if (!sid) return;
     const byId = sessionsSnapshotStore.snapshot?.byId ?? {};
-    let needNow = sessionNotifyState(byId[sid]) === "need";
+    const pendingAck = pendingAckForSession(sid);
     for (const cid of collectKids(sid)) {
       if (sessionNotifyState(byId[cid]) === "need") {
-        needNow = true;
-        saveNotifyAck(cid, "need");
+        const childAck = pendingAckForSession(cid);
+        if (childAck != null) {
+          saveNotifyAck(cid, childAck);
+          notifyStateSeenRef.current[cid] = childAck;
+        }
       }
     }
-    if (!needNow) {
-      try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.();
-        if (Array.isArray(face?.pending) && face.pending.length > 0) needNow = true;
-      } catch {
-      }
-    }
-    if (needNow) saveNotifyAck(sid, "need");
-    else {
+    if (pendingAck != null) {
+      saveNotifyAck(sid, pendingAck);
+      notifyStateSeenRef.current[sid] = pendingAck;
+    } else {
       const st = sessionNotifyState(byId[sid]);
       if (st === "done") saveNotifyAck(sid, "done");
     }
@@ -23297,6 +23191,10 @@ function WorktableSection(props) {
     [registeredIds, projects.removed]
   );
   projectsRef.current = { projects, metas, aliveRegisteredIds };
+  widgetProjectOf = (id) => ({
+    folder: projectsRef.current.projects.folders[id],
+    spec: (splitStore.active && splitStore.spec?.id === id ? splitStore.spec : void 0) ?? projectsRef.current.projects.views[id] ?? projectsRef.current.projects.layouts.find((l) => l.id === id)
+  });
   projectBindingsRef.current = projects.bindings;
   const allIds = (0, import_react2.useMemo)(() => [...aliveRegisteredIds, ...layoutIds], [aliveRegisteredIds, layoutIds]);
   const effectiveOrder = (0, import_react2.useMemo)(() => {
@@ -23438,9 +23336,11 @@ function WorktableSection(props) {
     reportUsed(layout.id);
   };
   const removeLayout = (id) => {
+    invalidateWidgetProject(id);
     persistProjects((prev) => ({ ...prev, layouts: prev.layouts.filter((l) => l.id !== id) }));
   };
   const applyLayoutChange = (id, presetId) => {
+    invalidateWidgetProject(id);
     const layout = projects.layouts.find((l) => l.id === id);
     const meta = metas[id];
     const current = layout ?? projects.views[id];
@@ -23468,6 +23368,7 @@ function WorktableSection(props) {
   };
   const removeProject = (id) => {
     if (id === CONSOLE_ID) return;
+    invalidateWidgetProject(id);
     persistProjects((prev) => {
       const next = {
         ...prev,
@@ -24010,7 +23911,7 @@ function WorktableSection(props) {
           updateInfo.latest
         ] }),
         updateInfo.notes && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_updateNotes", children: updateInfo.notes }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_updateCmd", children: UPGRADE_CMD2 }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_updateCmd", children: UPGRADE_CMD }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_updateBtns", children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_updateBtn dsh-wt_updateBtnCopy", onClick: () => void copyUpgradeAi(), children: updateCopied ? "\u2713 " + t("update.copied") : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
             ICON_SPARK,
@@ -24019,7 +23920,7 @@ function WorktableSection(props) {
           ] }) }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_updateBtn", onClick: skipUpdate, children: t("update.skip") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_updateHint", children: t("update.upgradeHint") })
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_updateHint", children: t(DESKTOP_HOST ? "update.upgradeHintDesktop" : "update.upgradeHint") })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_manageHead", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dsh-wt_manageTitle", children: t("sort.label") }) }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "dsh-wt_sortRow", children: [
@@ -24371,13 +24272,17 @@ function WorktableSection(props) {
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "existing", children: t("console.groupExisting") }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "new", children: t("console.groupNew") })
         ] }),
-        consoleMode === "existing" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("select", { className: "dsh-wt_consoleSelect", value: consoleWsId, onChange: (e) => setConsoleWsId(e.target.value), children: listWorkspaces().map((w) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: w.id, children: w.title }, w.id)) }),
+        consoleMode === "existing" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("select", { className: "dsh-wt_consoleSelect", value: consoleWsId, onChange: (e) => setConsoleWsId(e.target.value), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "", children: t("console.chooseGroup") }),
+          listWorkspaces().map((w) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: w.id, children: w.title }, w.id))
+        ] }),
         consoleMode === "new" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { className: "dsh-wt_consoleInput", placeholder: t("console.newParentPh"), value: consoleParent, onChange: (e) => setConsoleParent(e.target.value) }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { className: "dsh-wt_consoleInput", placeholder: t("console.newNamePh"), value: consoleName, onChange: (e) => setConsoleName(e.target.value) })
         ] }),
-        consoleErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "dsh-wt_consoleErr", children: t("console.bindFail") }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_consoleCreateBtn", disabled: consoleBusy, onClick: bindConsoleNew, children: consoleBusy ? "\u2026" : t("console.createBind") })
+        consoleNeedsWorkspace && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "dsh-wt_consoleHint", children: t("console.blankNeedsGroup") }),
+        consoleErr && !consoleNeedsWorkspace && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "dsh-wt_consoleErr", children: t("console.bindFail") }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "dsh-wt_consoleCreateBtn", disabled: consoleBusy || consoleNeedsWorkspace || consoleMode === "existing" && !consoleWsId, onClick: bindConsoleNew, children: consoleBusy ? "\u2026" : t("console.createBind") })
       ] })
     ] }) }),
     customOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dsh-wt_popBackdrop", style: { zIndex: 83 }, onClick: () => setCustomOpen(false) }),
@@ -24548,20 +24453,13 @@ function apply(ctx) {
   } catch {
   }
   try {
-    window.__dshOpenSession = (id) => openMainSession(id);
-    window.__dshCurrentMainSession = () => currentMainSessionId();
-    window.__dshUiWorkspace = () => {
-      try {
-        return ctx.get?.("uiWorkspace") ?? null;
-      } catch {
-        return null;
-      }
-    };
+    window.__dshOpenSession = (id) => openHostSession(ctx, ctx.sessions, id);
     window.__dshSessions = ctx.sessions;
     window.__dshPromptIntoSession = (id, text2) => promptIntoSession(id, text2);
     window.__dshWorkspaces = ctx.workspaces;
     window.__dshBuildWindowTaskText = buildWindowTaskText;
     window.__dshSyncSessionScope = () => syncSessionScope(sessionBridge?.list);
+    window.__dshCurrentMainSession = () => currentMainSessionId();
   } catch {
   }
   ctx.effect(() => {
@@ -24617,22 +24515,30 @@ function apply(ctx) {
   ctx.effect(() => disposeSubscribe, "dsh-worktable: project registry watch");
   const sessionsList = ctx.sessions?.list;
   if (sessionsList && typeof sessionsList.getSnapshot === "function") {
+    adaptSessionSnapshot = createSessionSnapshotAdapter();
     syncSessionScope(sessionsList);
     const disposeScope = sessionsList.subscribe(() => syncSessionScope(sessionsList));
     ctx.effect(() => disposeScope, "dsh-worktable: session scope watch");
+    ctx.inject(["uiSession"], (statusCtx) => {
+      const source = statusCtx.uiSession?.sessionStatus;
+      if (!source?.getSnapshot || !source?.subscribe) return;
+      sessionStatusSource = source;
+      syncSessionScope(sessionsList);
+      const disposeStatus = source.subscribe(() => syncSessionScope(sessionsList));
+      statusCtx.effect(() => () => {
+        disposeStatus();
+        if (sessionStatusSource === source) sessionStatusSource = null;
+      }, "dsh-worktable: session status watch");
+    });
+    ctx.inject(["uiConversation"], (conversationCtx) => {
+      const source = conversationCtx.uiConversation;
+      if (typeof source?.binding !== "function") return;
+      sessionConversationSource = source;
+      conversationCtx.effect(() => () => {
+        if (sessionConversationSource === source) sessionConversationSource = null;
+      }, "dsh-worktable: conversation timer source");
+    });
   }
-  mainSessionWatchRef.list = sessionsList;
-  ctx.effect(() => {
-    ensureMainSessionWatch();
-    return () => {
-      try {
-        mainSessionWatchDispose?.();
-      } catch {
-      }
-      ;
-      mainSessionWatchDispose = null;
-    };
-  }, "dsh-worktable: main session watch");
   ctx.slots.inject("shell.overlay", () => ctx.slots.register({
     name: "shell.overlay",
     id: "dsh-worktable-split",
@@ -24660,7 +24566,9 @@ try {
     applyProjectOpen,
     planProjectsLoad,
     projectsBackupWrite,
-    projectsBackupHeal
+    projectsBackupHeal,
+    openMainSession,
+    currentMainSessionId
   };
 } catch {
 }

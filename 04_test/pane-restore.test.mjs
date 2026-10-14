@@ -3,7 +3,6 @@
  *
  * 背景：窗格内容 = 标签列表；点 ✕ 走 splitStore.closeTab（直接从 spec 删除并持久化）——
  * 标签关空后窗格退化成 5 图标选择器，AI 产物等内容**不可找回**（用户实测：java面试项目窗口1）。
- * 本测试驱动构建产物 lib/client.js 里的 splitStore 与 seedPaneRestore：
  *   1. closeTab 留档（≤5、最近在前、原 id/标题/内容完整保留）
  *   2. restoreClosedTab 原样放回（原 id 不变）并移出历史；未命中 = 无操作
  *   3. 历史随 spec 走 onSpecMutated（持久化通道不丢）
@@ -125,8 +124,8 @@ function loadBundle() {
   createContext(runSandbox)
   const mod = runInNewContext('__factory(__requireStub)', runSandbox, { timeout: 20000 })
   const dbg = sandbox.window.__dshWorktable
-  if (!dbg || !dbg.splitStore || typeof dbg.seedPaneRestore !== 'function') fail('load', 'window.__dshWorktable.{splitStore,seedPaneRestore} 未导出')
-  return { sandbox, mod, splitStore: dbg.splitStore, seedPaneRestore: dbg.seedPaneRestore }
+  if (!dbg || !dbg.splitStore) fail('load', 'window.__dshWorktable.splitStore 未导出')
+  return { sandbox, mod, splitStore: dbg.splitStore }
 }
 
 const tab = (id, title, content) => ({ id, title, content })
@@ -200,23 +199,7 @@ function attach(store, spec) {
   ok('2. restoreClosedTab 原样放回（原 id）+ 未命中无操作')
 }
 
-// —— 3. seedPaneRestore：只填空窗格、不覆盖非空窗格、同内容去重 ——
-{
-  const { seedPaneRestore } = loadBundle()
-  const empty = makeSpec([])
-  const seeded = seedPaneRestore(empty, 'main', 0, iframe('/site/kb'))
-  if (!seeded) fail('3.seed', '空窗格应登记可恢复项')
-  const list = seeded.main[0].closedTabs ?? []
-  if (list.length !== 1 || !eq(list[0].content, iframe('/site/kb'))) fail('3.payload', '登记内容错: ' + JSON.stringify(list))
-  if (empty.main[0].closedTabs) fail('3.pure', '应为纯函数：入参 spec 不得被改动')
-  if (seedPaneRestore(seeded, 'main', 0, iframe('/site/kb')) !== null) fail('3.dedupe', '同内容不应重复登记')
-  const occupied = makeSpec([tab('t1', 'A', iframe('/a'))])
-  if (seedPaneRestore(occupied, 'main', 0, iframe('/site/kb')) !== null) fail('3.occupied', '非空窗格不得回填（不覆盖用户内容）')
-  if (seedPaneRestore(empty, 'main', 5, iframe('/x')) !== null) fail('3.noPane', '不存在的窗格应返回 null')
-  ok('3. seedPaneRestore 纯函数：只填空窗格 / 不覆盖非空 / 同内容去重')
-}
-
-// —— 4. splitStore.seedRestore 活 spec 通道 + 恢复闭环 ——
+// —— 4. ✕ → ↩ 恢复闭环（活 spec 通道）——
 {
   const { splitStore } = loadBundle()
   const mutations = attach(splitStore, makeSpec([tab('t1', '知识库阅读器.html', iframe('/site/kb'))]))
@@ -225,46 +208,9 @@ function attach(store, spec) {
   if (closed.length !== 1) fail('4.closed', '关闭应留档')
   splitStore.restoreClosedTab('main', 0, closed[0].id)
   if (!splitStore.spec.main[0].tabs.some((t) => t.id === 't1')) fail('4.roundtrip', '✕ → ↩ 未闭环')
-  // 活通道回填：另一个空窗格
-  const spec = makeSpec([])
-  spec.main.push({ id: 'm2', title: '窗口2', min: 200, tabs: [], active: 0 })
-  attach(splitStore, spec)
-  splitStore.seedRestore('main', 1, iframe('/site/kb2'))
-  const p2 = splitStore.spec.main[1]
-  if ((p2.closedTabs ?? []).length !== 1) fail('4.live', '活 spec 回填失败')
-  if (!eq(p2.closedTabs[0].content, iframe('/site/kb2'))) fail('4.livePayload', '回填内容错')
-  if (mutations.length === 0) fail('4.liveMutate', '活通道回填应走 onSpecMutated')
-  ok('4. ✕ → ↩ 闭环 + seedRestore 活 spec 回填')
+  if (mutations.length === 0) fail('4.liveMutate', '恢复闭环应走 onSpecMutated')
+  ok('4. ✕ → ↩ 恢复闭环（活 spec 通道）')
 }
 
-// —— 5. htmlProductCandidates：无清单兜底的产物候选（纯函数） ——
-{
-  const { mod } = loadBundle()
-  const fn = mod.htmlProductCandidates
-  if (typeof fn !== 'function') fail('5.export', 'htmlProductCandidates 未导出（无清单项目无法选产物）')
-  const top = [
-    { name: 'README.md', path: 'D:\\p\\README.md', isDir: false },
-    { name: 'index.html', path: 'D:\\p\\index.html', isDir: false },
-    { name: 'widget', path: 'D:\\p\\widget', isDir: true },
-    { name: 'data', path: 'D:\\p\\data', isDir: true },
-  ]
-  const children = [
-    { name: 'widget', entries: [
-      { name: 'knowledge-lab.html', path: 'D:\\p\\widget\\knowledge-lab.html', isDir: false },
-      { name: 'lab.js', path: 'D:\\p\\widget\\lab.js', isDir: false },
-      { name: 'sub', path: 'D:\\p\\widget\\sub', isDir: true },
-    ] },
-    { name: 'data', entries: [{ name: 'big.json', path: 'D:\\p\\data\\big.json', isDir: false }] },
-  ]
-  const out = fn(top, children)
-  const titles = out.map((x) => x.title)
-  if (!titles.includes('index.html')) fail('5.top', '顶层 html 未收录: ' + JSON.stringify(titles))
-  if (!titles.includes('widget/knowledge-lab.html')) fail('5.child', '一层子目录 html 未收录: ' + JSON.stringify(titles))
-  if (titles.some((t) => t.includes('README') || t.includes('lab.js') || t.includes('big.json'))) fail('5.filter', '混入非 html: ' + JSON.stringify(titles))
-  if (!out.every((x) => x.key.startsWith('f:') && x.kind === 'html' && x.key.length > 2)) fail('5.shape', 'key/kind 形状错: ' + JSON.stringify(out))
-  const many = fn(Array.from({ length: 30 }, (_, i) => ({ name: 'p' + i + '.html', path: 'D:\\p\\p' + i + '.html', isDir: false })), [])
-  if (many.length !== 12) fail('5.cap', '应封顶 12 条，实际 ' + many.length)
-  ok('5. htmlProductCandidates（顶层 + 一层子目录、滤非 html、封顶 12）')
-}
 
 console.log('\n' + pass + ' 个用例通过（pane-restore）')

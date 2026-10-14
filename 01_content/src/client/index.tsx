@@ -2,8 +2,13 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { css } from './styles'
 import { NS, zh, en, type WorktableKey } from './locales'
 import { isAbs, joinPath, parentPathOf, basenameOf } from './pathutil'
-import { splitStore, SplitWorkspace, setSplitT, setSplitEnv, seedPaneRestore, type LayoutSpec, type SplitPane, type ConsoleCardData, type WidgetEntry } from './split'
+import { splitStore, SplitWorkspace, setSplitT, setSplitEnv, type LayoutSpec, type SplitPane, type ConsoleCardData } from './split'
 import { renameOverride, popoverPos, collectTabs, migrateTabsInto } from './consoleEdit'
+import { appendHostInput } from './hostInput'
+import { worktableUpgrade } from './hostTransport'
+import { WidgetMountRegistry, newWidgetId, widgetManifestPath, type WidgetBinding } from './widgetMount'
+import { currentSessionOf, openHostSession, sendHostSession, createSessionSnapshotAdapter, childSessionIdsOf, pendingAckOf, sessionRuntimeMs } from './sessionCompat'
+import { cleanPreviewText, previewFromEvents, readSessionPreview, presetApiOf, modelApiOf, createHostSession, blankSessionNeedsWorkspace } from './sessionDetails'
 import { photoStore, kindOf } from './photoStore'
 import { DEFAULT_BG_SVG, b64ToBlob } from './defaultBg'
 import { WAVE_BG_B64 } from './waveBg'
@@ -28,8 +33,7 @@ type DockMode = 'footer' | 'float'
 declare const __WT_VERSION__: string
 const LOCAL_VERSION = typeof __WT_VERSION__ === 'undefined' ? 'dev' : __WT_VERSION__
 const UPDATE_REPO = 'Aisland-SJL/dsh-worktable'
-const UPGRADE_CMD = 'dsh plugin --profile web add "https://github.com/Aisland-SJL/dsh-worktable/releases/latest/download/dsh-worktable.tgz"'
-const UPGRADE_AI = '帮我升级 dsh-worktable：执行 ' + UPGRADE_CMD + '，完成后提醒我重启 dsh web 并刷新页面'
+const { command: UPGRADE_CMD, prompt: UPGRADE_AI, desktop: DESKTOP_HOST } = worktableUpgrade()
 // 更新提示图标（手绘 SVG，避免 emoji 跨平台渲染差异）
 const ICON_SYNC = (
   <svg viewBox="0 0 16 16" aria-hidden>
@@ -194,7 +198,7 @@ function buildLayout(presetId: string, name: string): LayoutSpec {
   const top = Array.from({ length: def.topCount }, (_, i) => mk(def.leftCount + i))
   const main = Array.from({ length: def.contentCount }, (_, i) => mk(def.leftCount + def.topCount + i))
   return {
-    id: 'layout-' + Date.now().toString(36),
+    id: newWidgetId('layout'),
     title: name,
     left: left ?? null,
     top: top.length > 0 ? top : null,
@@ -484,60 +488,22 @@ let clientCtx: any = null
 /** 宿主 API 客户端（apply 时从 connection 服务取；agentPresets/sessions 用于修复新会话继承失效模型的 bug） */
 let hostApi: { agentPresets?: any; sessions?: any } | null = null
 
-/** 主视图会话切换的宿主兼容层（2026-09-20 实测 DSH 0.1.6-alpha.2）。
- *  0.1.6 起宿主移除了 `sessions.open`，主视图切换改由 uiWorkspace 服务负责
- *  （openSession → replaceMain → selection 快照，持久化键 dsh.sessions.current）；
- *  `sessions.list` 快照也不再带 `current`（只剩 ids/byId/phase/…）。
- *  老宿主（≤0.1.2-rc.1）仍是 sessions.open + list.current。两通道都试、先新后旧；
- *  都不可用 = 静默不改（与「未绑定 = 不切换」语义一致）。 */
-function mainViewSessionChannel(): { open: (id: string) => void; current: () => string } {
-  try {
-    const uw = clientCtx?.get?.('uiWorkspace')
-    if (uw && typeof uw.openSession === 'function') {
-      return {
-        open: (id: string) => { uw.openSession(id) },
-        current: () => { try { return uw.selection?.getSnapshot?.()?.sessionId ?? '' } catch { return '' } },
-      }
-    }
-  } catch { /* 老宿主没有 uiWorkspace 服务 → 走 sessions.open */ }
-  return {
-    open: (id: string) => {
-      const fn = sessionBridge?.sessions?.open
-      if (typeof fn === 'function') fn.call(sessionBridge!.sessions, id)
-    },
-    current: () => { try { return sessionBridge?.list?.getSnapshot?.()?.current ?? '' } catch { return '' } },
-  }
-}
-
-/** 切换主视图会话（≥0.1.6 走 uiWorkspace，老宿主走 sessions.open）；返回是否发出切换 */
+/** 切换主视图会话：统一走上游 sessionCompat（新宿主 uiWorkspace / 老宿主 sessions.open 都在里面）；返回是否发出切换。
+ *  本地旧调用点保留这个名字，实现只有一份，避免两套 0.1.6/0.2 语义并存。 */
 function openMainSession(sessionId: string): boolean {
   if (!sessionId) return false
-  try { mainViewSessionChannel().open(sessionId); ensureMainSessionWatch(); return true } catch { return false }
+  try { void openHostSession(clientCtx, sessionBridge?.sessions, sessionId); return true } catch { return false }
 }
 
-/** 当前主视图会话 id（空串 = 未知） */
+/** 当前主视图会话 id：同样统一走上游 sessionCompat（空串 = 未知） */
 function currentMainSessionId(): string {
-  try { return mainViewSessionChannel().current() ?? '' } catch { return '' }
-}
-
-/** 主视图会话变化订阅：0.1.6 的「当前会话」在 uiWorkspace.selection 快照里，
- *  sessions.list 的通知不保证覆盖主视图切换 → 额外订阅一条（apply 时或首次切换时绑定一次）。 */
-let mainSessionWatchDispose: (() => void) | null = null
-const mainSessionWatchRef: { list: any } = { list: null }
-function ensureMainSessionWatch(): void {
-  if (mainSessionWatchDispose) return
-  try {
-    const selection = clientCtx?.get?.('uiWorkspace')?.selection
-    if (!selection || typeof selection.subscribe !== 'function') return
-    const dispose = selection.subscribe(() => syncSessionScope(mainSessionWatchRef.list))
-    mainSessionWatchDispose = typeof dispose === 'function' ? dispose : () => {}
-  } catch { mainSessionWatchDispose = null }
+  try { return currentSessionOf(sessionBridge?.list?.getSnapshot?.()) ?? '' } catch { return '' }
 }
 
 /** 新会话显式应用「部署默认预设」：宿主新会话座位同款逻辑（api.agentPresets.select，仅对 blank 会话生效）。
  *  修复：用户删掉默认模型后，新建会话继承到失效预设，prompt 报 model-unavailable 导致窗口建不出来。 */
 async function ensureSessionPreset(sessionId: string): Promise<void> {
-  const api = hostApi?.agentPresets
+  const api = presetApiOf(clientCtx, hostApi?.agentPresets)
   if (!api || typeof api.list !== 'function' || typeof api.select !== 'function') return
   try {
     const listRes = await api.list({})
@@ -591,7 +557,7 @@ function pickInheritedModel(groups: any[], baseModel: string | undefined): { pro
  *  不擅自选模型——① 优先继承用户当前会话正在用的模型；② 兜底按失效选择里的模型家族词
  *  找同款；③ 最后才目录首个。session.selectModel 同时把新选择存为默认，顺带修复后续新会话。 */
 async function ensureSessionModel(sessionId: string): Promise<void> {
-  const api = hostApi?.sessions
+  const api = modelApiOf(clientCtx, sessionBridge?.sessions, hostApi?.sessions)
   if (!api || typeof api.models !== 'function' || typeof api.selectModel !== 'function') return
   try {
     const mRes = await api.models({ sessionId })
@@ -602,7 +568,7 @@ async function ensureSessionModel(sessionId: string): Promise<void> {
     let effort: string | undefined
     // ① 无条件继承用户当前会话的选择（用户正在用哪个模型，新会话就用哪个）
     try {
-      const cur = currentMainSessionId()
+      const cur = currentSessionOf(sessionBridge?.list?.getSnapshot?.())
       if (cur && cur !== sessionId) {
         const cRes = await api.models({ sessionId: cur })
         if (cRes?.result?.ok) {
@@ -698,57 +664,14 @@ function listWorkspaces(): { id: string; title: string; path: string }[] {
   } catch { return [] }
 }
 
-/** 预览文本清洗：去掉围栏代码块（```…```，含 dsh-ui 等）与行内代码，压缩空白；
- *  代码为主的片段会被滤空 → 调用方回退到更早的消息。只清洗显示用副本，不改原文。 */
-function cleanPreviewText(raw: string): string {
-  let s = String(raw ?? '')
-  s = s.replace(/```[a-zA-Z0-9_+-]*[\s\S]*?```/g, ' ')
-  s = s.replace(/```[a-zA-Z0-9_+-]*[\s\S]*$/g, ' ')
-  s = s.replace(/`[^`\n]{1,200}`/g, ' ')
-  s = s.replace(/```/g, ' ')
-  s = s.replace(/\s+/g, ' ').trim()
-  return s
-}
-
-/** 冷会话最近消息缓存与预热：宿主 history 只读通道（face.history 为运行期内建方法，非公开接口，
- *  只读侦察确认可用；拉取是带宽成本不是 Token 成本，模型不参与）。 */
+/** 冷会话最近消息缓存与预热：0.2 临时持有会话、读 eventSource 后释放；旧版保留 history 通道。
+ *  只读消息文本，不请求模型；拉取是带宽成本，不产生模型 Token。 */
 const previewCache = new Map<string, string>()
 const previewFetching = new Set<string>()
 let previewSweepBusy = false
 let previewTimer: number | null = null
 
-/** 从 history 事件流尾部提取最近一条成品消息文本（优先 text 块；清洗代码后仍太短则回退更早消息） */
-async function coldPreviewOf(face: any): Promise<string> {
-  if (!face || typeof face.history !== 'function') return ''
-  const r1 = await face.history({ maxMessages: 6 })
-  const evs = r1?.result?.value?.events
-  if (!Array.isArray(evs)) return ''
-  const textOf = (blocks: any): string => {
-    let fallback = ''
-    if (!Array.isArray(blocks)) return ''
-    for (const b of blocks) {
-      const s = typeof b?.text === 'string' ? b.text.trim() : ''
-      if (!s) continue
-      if (b?.type === 'text') return s
-      if (!fallback) fallback = s
-    }
-    return fallback
-  }
-  for (let i = evs.length - 1; i >= 0; i--) {
-    const ev = evs[i]?.event
-    if (!ev) continue
-    const d = ev.data ?? {}
-    let raw = ''
-    if (ev.type === 'user/message') raw = textOf(d.content ?? d.blocks)
-    else if (ev.type === 'assistant/message') { const m = d.message ?? d; raw = textOf(m.content ?? m.blocks) }
-    if (!raw) continue
-    const clean = cleanPreviewText(raw)
-    if (clean.length >= 8) return clean.slice(0, 220)
-  }
-  return ''
-}
-
-/** 预热所有已绑定会话的最近消息（逐个只读拉取；已在拉/已拉过未完成的跳过，失败静默回退内存路径） */
+/** 预热所有已绑定会话的最近消息（逐个只读拉取；同一在途请求不重复，失败回退缓存/内存路径） */
 async function sweepPreviews() {
   if (previewSweepBusy) return
   previewSweepBusy = true
@@ -758,9 +681,9 @@ async function sweepPreviews() {
       if (previewFetching.has(sid)) continue
       previewFetching.add(sid)
       try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session
-        const txt = await coldPreviewOf(face)
-        if (txt) { previewCache.set(sid, txt); notifyConsole() }
+        const txt = await readSessionPreview(sessionBridge?.sessions, sid)
+        previewCache.set(sid, txt)
+        notifyConsole()
       } catch {} finally { previewFetching.delete(sid) }
     }
   } finally { previewSweepBusy = false }
@@ -768,14 +691,17 @@ async function sweepPreviews() {
 
 /** 防抖调度：控制室开着且会话快照变化时刷新预览（合并 6s 内的连续变化） */
 function schedulePreviewSweep() {
-  if (previewTimer != null) return
+  // Temporary retain/release also changes the catalog: do not schedule ourselves forever.
+  if (previewSweepBusy || previewTimer != null) return
   previewTimer = window.setTimeout(() => { previewTimer = null; sweepPreviews() }, 6000)
 }
 
 /** 从会话快照节点里提取最近一条文本（纯读内存镜像，零 Token；代码清洗后无则 ''） */
 function lastTextOf(sid: string): string {
   try {
-    const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.()
+    const binding = sessionBridge?.sessions?.binding?.(sid)
+    if (binding?.eventSource?.getSnapshot) return previewFromEvents(binding.eventSource.getSnapshot().entries)
+    const face = binding?.session?.getSnapshot?.()
     const nodes: any[] = face?.nodes ?? []
     for (let i = nodes.length - 1; i >= 0; i--) {
       const n = nodes[i]
@@ -1047,9 +973,20 @@ async function fetchSessionGroups(): Promise<{ groups: { title: string; sessions
   try {
     const snap = sessionBridge?.list?.getSnapshot?.()
     const byId = snap?.byId ?? {}
-    const current = currentMainSessionId() || (snap?.current ?? '')
-    // 子代理会话（后台产生的，用户面板看不到）排除：origin 标注 + 目录双通道
-    const subKids = subagentSessionIds(snap)
+    const current = currentSessionOf(snap)
+    // 子代理会话（后台产生的，用户面板看不到）排除
+    const subKids = new Set<string>()
+    try {
+      const map = snap?.subagentsByParent ?? {}
+      for (const k of Object.keys(map)) {
+        const v = map[k]
+        const arr = Array.isArray(v) ? v : (v?.entries ?? v?.items ?? [])
+        if (Array.isArray(arr)) arr.forEach((c: any) => {
+          const cid = c?.sessionId ?? c?.id
+          if (typeof cid === 'string') subKids.add(cid)
+        })
+      }
+    } catch {}
     const titleOf = (sid: string) => byId[sid]?.title ?? byId[sid]?.displayTitle ?? sid
     const mk = (sid: string) => ({ id: sid, title: titleOf(sid), isCurrent: sid === current })
     // 工作区分组：服务端读宿主 workspace.json（含 archived 排除），按用户面板结构分组；
@@ -1115,33 +1052,7 @@ function hideBindTip() {
 async function promptIntoSession(sessionId: string, text: string): Promise<void> {
   const b = sessionBridge
   if (!b) throw new Error('bridge unavailable')
-  const sessions = b.sessions as any
-  // 新会话入列可能异步：最多等 2s 直到 binding 可解析
-  let session: any = null
-  for (let i = 0; i < 10; i++) {
-    try { session = sessions?.binding?.(sessionId)?.session ?? null } catch { session = null }
-    if (session) break
-    await new Promise((r) => setTimeout(r, 200))
-  }
-  if (session) {
-    // 1) 宿主包装（正确签名：会话面 + 空图片 + queue 投递）
-    if (typeof b.conversation?.sendSession === 'function') {
-      try { await b.conversation.sendSession(session, text, [], 'queue'); return } catch { /* 包装失败则直连 */ }
-    }
-    // 2) 直连会话面 prompt（宿主 sendSession 内部同款路径）
-    if (typeof session.prompt === 'function') {
-      const result = await session.prompt([{ type: 'text', text }], 'queue')
-      if (result && result.ok) return
-      if (result && !result.ok) throw new Error('session.prompt: ' + (result.error?.code ?? 'rejected') + (result.error?.message ? ': ' + result.error.message : ''))
-    }
-  }
-  // 3) 备用：作用域上下文里取 conversation 服务再发
-  try {
-    const scoped = sessions?.scope?.(sessionId)
-    const conv = scoped?.get?.('conversation')
-    if (conv && typeof conv.send === 'function') { await conv.send(text); return }
-  } catch { /* 落入最终报错 */ }
-  throw new Error('no send path: session face unavailable')
+  await sendHostSession(b, sessionId, text)
 }
 
 /** 新建会话的分组选择：未分组 / 加入现有分组 / 新建一个分组（父目录 + 名称） */
@@ -1160,14 +1071,14 @@ const KNOWLEDGE_PACK = [
   '  界面即可与 DSH 原生风格一致；自造样式控制在最小范围。',
   '- 服务端能力：/api/worktable/fs（列目录）、/api/worktable/write（写文件）、/api/worktable/mkdir（建目录）、',
   '  /api/worktable/git（git 状态）、/api/worktable/site（静态托管）。',
-  '- 改完插件在 01_content 目录执行 npm run build；重启 dsh web 或浏览器 F5 生效。',
+  '- 改完插件在 01_content 目录执行 npm run build；网页端重启 dsh web 并刷新，桌面端完整退出后手动重新打开。',
   '- 所有产出文件一律放进本任务标注的项目文件夹，保持用户目录干净。',
   '- 标注协议：收到「📌 标注-窗口N …（坐标/元素/框内文字…）…」= 工作台标注（窗口编号约定：左栏→顶行→主行，从 1 起）。',
   '  处理：标注已标明框选区域与「最可能目标」时直接作答、不要二次询问（仅当确实无法从标注定位时才问一次）；能查看截图或打开窗口则先核实再回答。',
 ].join('\n')
 
 /** 组装窗口任务提示词（新建/发送两模式共用；导出到 window 供自测校验） */
-function buildWindowTaskText(projectId: string, projectName: string, windowLabel: string, requirement: string, folder: string | null, mode: 'new' | 'send'): string {
+function buildWindowTaskText(projectId: string, projectName: string, windowLabel: string, requirement: string, folder: string | null, mode: 'new' | 'send', widgetBindings: WidgetBinding[] = []): string {
   const win = windowLabel || '一个内容窗'
   const folderLine = folder
     ? '项目文件夹：' + folder + '（本项目所有产出文件一律放进这个文件夹；不要写到别的默认位置）。'
@@ -1183,8 +1094,9 @@ function buildWindowTaskText(projectId: string, projectName: string, windowLabel
     '   - 文档 / 演示（PPT、报告、表格）→ 生成真实文件（.pptx / .md / .xlsx）放进项目文件夹，用户用本机软件打开编辑；',
     '   - 视频 / 动画 → 生成 .mp4 / .gif（或 Lottie JSON）文件放进项目文件夹；',
     '   - 工作台已有内置窗能力（资源管理器 / 终端 / 浏览器 / 动画站）→ 不要重复造轮子，直接建议用户改用内置窗。',
-    '5. 完成内容后，用一两句话告知用户挂载结果（不要提问、不要等待用户确认）：例如「已完成并自动挂到「' + win + '」窗口，想调整直接说，我改完会自动更新」。该窗口位于「' + projectName + '」项目内，如需要也可协助该项目后续的其他自定义工作。',
-    '6. 完成后写入「产物清单」文件：在项目文件夹里创建 widget-result.json。挂载单个窗口时写单对象 {\"window\":\"' + win + '\",\"path\":\"产物相对路径\",\"kind\":\"html\"}；一次挂载多个窗口（如窗口1 + 窗口2）时写 JSON 数组，每个元素为上述单对象（可引用多个产物文件）。kind 可选 html（本地页面，path 相对项目文件夹）/ url（外部链接，path 为完整 URL）/ file（其他文件，path 相对项目文件夹）。写完这个文件，工作台会自动把产物挂载进清单对应的各个窗口并锁定保存，用户无需手动操作；用户下次打开工作台时各窗口直接显示产物，不会丢失或重置。',
+    '5. 完成后用一两句话说明作品与目标窗口。写清单不代表界面已确认挂载成功；只有实际看到挂载结果时，才说「已挂载」。该窗口属于「' + projectName + '」项目。',
+    '6. 产物握手 v2：只使用下列本项目专属清单路径，不读写项目根目录旧的 widget-result.json，也不要复用其他项目的清单。作品仍放在项目文件夹，path 按该文件夹解析。先完成作品，再创建清单父目录并写入对应 JSON；kind 为 html / url / file，替换示例中的 path 与 kind，其他身份字段保持原样。一次生成多个窗口时分别写各窗口的清单。以后在本会话里继续修改同名作品，仍更新这个清单；不得根据清单文件名变化与否判断是否完成。',
+    widgetBindings.length ? widgetBindings.map((b) => b.window + '：' + widgetManifestPath(b) + '\n' + JSON.stringify({ version: 2, projectId: b.projectId, paneId: b.paneId, bindingId: b.bindingId, window: b.window, path: '产物相对路径', kind: 'html' })).join('\n') : '当前没有有效的自动挂载绑定，请用户从目标窗口重新发送自定义任务；不要写旧清单猜测归属。',
     KNOWLEDGE_PACK,
   ]
   return lines.join('\n')
@@ -1194,7 +1106,6 @@ function buildWindowTaskText(projectId: string, projectName: string, windowLabel
 export async function createCustomSession(projectId: string, projectName: string, requirement: string, group?: NewSessionGroup, windowLabel = '', folder: string | null = null): Promise<string> {
   const b = sessionBridge
   if (!b || typeof b.sessions?.create !== 'function') throw new Error('sessions unavailable')
-  const text = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, 'new')
   // 分组解析：existing → 直接带 workspaceId 建会话；new → 先建目录并注册为工作区
   let workspaceId: string | null = null
   const g = group ?? { kind: 'none' as const }
@@ -1222,11 +1133,13 @@ export async function createCustomSession(projectId: string, projectName: string
   let createOpts: any = {}
   if (workspaceId) createOpts = { workspaceId }
   else if (folder) createOpts = { cwd: folder }
-  const sessionId = await b.sessions.create(createOpts)
+  const sessionId = await createHostSession(b.sessions, b.workspaces, createOpts, g.kind === 'none' ? 'none' : 'auto')
   await ensureSessionPreset(sessionId) // 新会话应用部署默认预设
   await ensureSessionModel(sessionId) // 修复继承失效 provider（selectModel 同步存默认，顺带修复后续新会话）
   markPluginSessionOpen(sessionId) // 插件发起的切换：不触发「切会话关项目」联动
-  openMainSession(sessionId)
+  try { await openHostSession(clientCtx, b.sessions, sessionId) } catch {}
+  const widgetBindings = prepareWidgetTask(projectId, folder, sessionId, windowLabel)
+  const text = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, 'new', widgetBindings)
   await promptIntoSession(sessionId, text)
   return sessionId
 }
@@ -1235,9 +1148,10 @@ export async function createCustomSession(projectId: string, projectName: string
 export async function sendCustomToSession(sessionId: string, projectId: string, projectName: string, requirement: string, windowLabel = '', folder: string | null = null): Promise<void> {
   const b = sessionBridge
   if (!b) throw new Error('bridge unavailable')
-  const text = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, 'send')
+  const widgetBindings = prepareWidgetTask(projectId, folder, sessionId, windowLabel)
+  const text = buildWindowTaskText(projectId, projectName, windowLabel, requirement, folder, 'send', widgetBindings)
   markPluginSessionOpen(sessionId) // 插件发起的切换：不触发「切会话关项目」联动
-  openMainSession(sessionId)
+  try { await openHostSession(clientCtx, b.sessions, sessionId) } catch {}
   await promptIntoSession(sessionId, text)
 }
 
@@ -1267,7 +1181,7 @@ const sessionScopeStore: {
 /** 完整会话快照（模块级）：项目卡片的任务完成/待决提醒镜像数据源 */
 const sessionsSnapshotStore: { snapshot: any | null; listeners: Set<() => void> } = { snapshot: null, listeners: new Set() }
 
-/** 提醒确认（ack）持久化：会话 id → 已确认的状态（'done' | 'need'） */
+/** 提醒确认：会话 id → done / 旧 need / need:不含正文的待决身份集合。 */
 function loadNotifyAck(): Record<string, string> {
   try {
     const raw = localStorage.getItem('dsh.worktable.notifyAck.v1')
@@ -1282,122 +1196,40 @@ function saveNotifyAck(sid: string, state: string) {
     localStorage.setItem('dsh.worktable.notifyAck.v1', JSON.stringify(ack))
   } catch {}
 }
-/** 自动挂载：已消费过完成事件的会话集（一次完成只挂载一次） */
+/** 自动挂载：按项目与会话消费完成边沿，同一会话可服务不同项目。 */
 const mountConsumedRef: { current: Set<string> } = { current: new Set<string>() }
-/** 待挂载（项目未打开时暂存）：projectId → 挂载内容；刷新后从 localStorage 恢复 */
-const pendingMountRef: { current: Record<string, any> } = { current: (() => {
-  try { return JSON.parse(localStorage.getItem('dsh.worktable.pendingMount.v1') ?? '{}') ?? {} } catch { return {} }
+/** v1 无归属清单/pending 不执行；原有 layouts/views 仍按项目 id 恢复。 */
+const widgetRegistry = new WidgetMountRegistry((() => { try { return localStorage } catch { return null } })())
+let widgetProjectOf: (id: string) => { folder?: string; spec?: LayoutSpec } = () => ({})
+function prepareWidgetTask(projectId: string, folder: string | null, sessionId: string, windowLabel: string): WidgetBinding[] {
+  if (!folder) return []
+  const current = widgetProjectOf(projectId)
+  if (!folder || current.folder !== folder || !current.spec) throw new Error('project folder or window changed')
+  return widgetRegistry.begin(projectId, current.spec, folder, sessionId, windowLabel)
+}
+/** 待挂载保存归属，打开时重新读取文件并校验当前目录/绑定/稳定窗格 id。 */
+const pendingMountRef: { current: Record<string, { binding: WidgetBinding }> } = { current: (() => {
+  try { return JSON.parse(localStorage.getItem('dsh.worktable.pendingMount.v2') ?? '{}') ?? {} } catch { return {} }
 })() }
-/** 已挂载指纹：projectId → widget-result.json 原文。自愈扫挂据此去重：
- *  同清单不重复锁定（不覆盖用户后续对窗口的手动调整），清单变化才重新挂载。 */
+/** 启动扫挂按绑定指纹去重；新的完成边沿允许同路径、同清单作品重新加载。 */
 const mountedWidgetRef: { current: Record<string, string> } = { current: (() => {
-  try { return JSON.parse(localStorage.getItem('dsh.worktable.mountedWidget.v1') ?? '{}') ?? {} } catch { return {} }
+  try { return JSON.parse(localStorage.getItem('dsh.worktable.mountedWidget.v2') ?? '{}') ?? {} } catch { return {} }
 })() }
-function recordMountedWidget(projectId: string, raw: string) {
-  if (!projectId || !raw) return
-  mountedWidgetRef.current[projectId] = raw
-  try { localStorage.setItem('dsh.worktable.mountedWidget.v1', JSON.stringify(mountedWidgetRef.current)) } catch {}
+const widgetReadSeqRef: { current: Record<string, number> } = { current: {} }
+function recordMountedWidget(bindingId: string, raw: string) {
+  if (!bindingId || !raw) return
+  mountedWidgetRef.current[bindingId] = raw
+  try { localStorage.setItem('dsh.worktable.mountedWidget.v2', JSON.stringify(mountedWidgetRef.current)) } catch {}
 }
-
-/** 产物清单原文缓存（📦 清单 / 存量救援回填 共用）：projectId → widget-result.json 原文（'' = 确认无清单） */
-const widgetManifestCache: { current: Record<string, string> } = { current: {} }
-/** 📦 清单订阅者：projectId → 监听器（自愈扫挂 / 自动挂载后刷新按钮） */
-const widgetListeners = new Map<string, Set<() => void>>()
-function notifyWidgets(projectId: string) {
-  delete productCache.current[projectId] // 清单/文件夹变化 → 产物候选重算
-  const set = widgetListeners.get(projectId)
-  if (!set) return
-  for (const fn of [...set]) { try { fn() } catch {} }
+function persistPendingWidgets() {
+  try { localStorage.setItem('dsh.worktable.pendingMount.v2', JSON.stringify(pendingMountRef.current)) } catch {}
 }
-/** 读项目文件夹里的 widget-result.json（默认走缓存；force = 重新读盘）。返回 '' = 无清单 */
-async function readWidgetManifest(projectId: string, folder: string, force = false): Promise<string> {
-  if (!force && widgetManifestCache.current[projectId] !== undefined) return widgetManifestCache.current[projectId]
-  try {
-    const r = await fetch('/api/worktable/file?path=' + encodeURIComponent(joinPath(folder, 'widget-result.json')), { cache: 'no-store' })
-    const raw = r.ok ? (await r.text()).trim() : ''
-    widgetManifestCache.current[projectId] = raw
-    return raw
-  } catch { return widgetManifestCache.current[projectId] ?? '' }
-}
-/** 清单条目展示名：网址原样，其余取文件名 */
-function widgetTitleOf(it: any): string {
-  const p = String(it?.path ?? '').trim()
-  if (it?.kind === 'url') return p
-  return basenameOf(p) || p
-}
-
-/** 产物候选缓存（清单/扫描结果）：projectId → 列表；notifyWidgets 时失效重算 */
-const productCache: { current: Record<string, { key: string; title: string; kind: string }[]> } = { current: {} }
-
-/** 无清单兜底：从目录列表里挑 .html 产物候选（顶层 + 一层子目录）。
- *  纯函数（便于回归）：top = 项目文件夹条目；children = 一层子目录（name + 其条目）。最多 12 条。 */
-export function htmlProductCandidates(
-  top: { name: string; path: string; isDir: boolean }[],
-  children: { name: string; entries: { name: string; path: string; isDir: boolean }[] }[],
-): { key: string; title: string; kind: string }[] {
-  const isHtml = (n: string) => /\.html?$/i.test(n)
-  const out: { key: string; title: string; kind: string }[] = []
-  for (const e of top ?? []) {
-    if (!e || e.isDir || !isHtml(String(e.name ?? ''))) continue
-    out.push({ key: 'f:' + e.path, title: String(e.name), kind: 'html' })
+function invalidateWidgetProject(projectId: string) {
+  widgetRegistry.revokeProject(projectId)
+  for (const [id, pending] of Object.entries(pendingMountRef.current)) {
+    if (pending?.binding?.projectId === projectId) delete pendingMountRef.current[id]
   }
-  for (const dir of children ?? []) {
-    for (const e of dir?.entries ?? []) {
-      if (!e || e.isDir || !isHtml(String(e.name ?? ''))) continue
-      out.push({ key: 'f:' + e.path, title: String(dir.name) + '/' + String(e.name), kind: 'html' })
-    }
-  }
-  return out.slice(0, 12)
-}
-
-/** 扫项目文件夹（顶层 + 一层子目录）的 .html 候选：无清单项目（如 AI学习）也能选产物 */
-async function scanHtmlProducts(folder: string): Promise<{ key: string; title: string; kind: string }[]> {
-  const SKIP = new Set(['.git', '.dsh', 'node_modules'])
-  const listDir = async (path: string): Promise<any[]> => {
-    try {
-      const r = await fetch('/api/worktable/fs', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path }),
-      })
-      const d = await r.json()
-      return Array.isArray(d?.entries) ? d.entries : []
-    } catch { return [] }
-  }
-  const top = await listDir(folder)
-  const dirs = top
-    .filter((e: any) => e?.isDir && !SKIP.has(String(e.name)) && !String(e.name).startsWith('.'))
-    .slice(0, 8)
-  const children: { name: string; entries: any[] }[] = []
-  for (const d of dirs) children.push({ name: String(d.name), entries: await listDir(String(d.path)) })
-  return htmlProductCandidates(top, children)
-}
-
-/** 「窗口N」→ 窗格位置（左栏 → 顶行 → 主行 编号规则，与 AGENTS.md 窗口编号一致） */
-function windowLabelToPane(spec: any, label: string): { row: 'left' | 'top' | 'main'; index: number } | null {
-  const m = /^窗口(\d+)$/.exec(String(label ?? '').trim())
-  if (!m) return null
-  const n = parseInt(m[1], 10)
-  if (!Number.isFinite(n) || n < 1) return null
-  let idx = n - 1
-  if (spec?.left) {
-    if (idx === 0) return { row: 'left', index: 0 }
-    idx -= 1
-  }
-  const top = spec?.top ?? []
-  if (idx < top.length) return { row: 'top', index: idx }
-  idx -= top.length
-  const main = spec?.main ?? []
-  if (idx < main.length) return { row: 'main', index: idx }
-  return null
-}
-
-/** 窗格是否存在于布局 spec（lockPane 对不存在的窗格会静默放弃；据此决定是否记录挂载指纹） */
-function paneExists(spec: any, row: 'left' | 'top' | 'main', index: number): boolean {
-  if (!spec) return false
-  if (row === 'left') return !!spec.left && index === 0
-  if (row === 'top') return !!spec.top && !!spec.top[index]
-  return !!spec.main && !!spec.main[index]
+  persistPendingWidgets()
 }
 
 /** 产物清单 → 窗口内容（html=目录级托管 iframe / url=外链 iframe / file=文件预览） */
@@ -1412,8 +1244,8 @@ function buildMountContent(folder: string, d: any): any {
   return { kind: 'iframe', url: '/api/worktable/site/' + encodeURIComponent(dir) + '/' + encodeURIComponent(name), title: name }
 }
 
-/** 每会话最近一次观察到的「需要判断」布尔值：状态转移时清除旧 ack（新一轮待决重新点亮） */
-const notifyStateSeenRef: { current: Record<string, boolean> } = { current: {} }
+/** 每会话最近观察到的待决身份；同为 need 的问题替换也必须重新点亮。 */
+const notifyStateSeenRef: { current: Record<string, string | null> } = { current: {} }
 /** 每会话最近观察到的「已完成」布尔值：新一次完成时清除旧 done ack（控制室绿光重新点亮） */
 const doneSeenRef: { current: Record<string, boolean> } = { current: {} }
 /** 清除某会话的 ack 记录（状态转移时调用，保证新问题不会被旧确认压住） */
@@ -1436,10 +1268,18 @@ function sessionNotifyState(entry: any): 'done' | 'need' | null {
   return null
 }
 
+let sessionStatusSource: any = null
+let sessionConversationSource: any = null
+let adaptSessionSnapshot = createSessionSnapshotAdapter()
+function pendingAckForSession(sid: string): string | null {
+  let face: any
+  try { face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.() } catch {}
+  return pendingAckOf(sessionsSnapshotStore.snapshot, sid, face)
+}
 function syncSessionScope(list: any) {
   try {
-    const snap = list.getSnapshot()
-    const current: string = currentMainSessionId() || (snap?.current ?? '')
+    const snap = adaptSessionSnapshot(list.getSnapshot(), sessionStatusSource)
+    const current = currentSessionOf(snap)
     const entry = snap?.byId?.[current] ?? snap?.items?.find((it: any) => it.sessionId === current) ?? null ?? null
     const cat = snap?.subagentsByParent?.[current]
     let subagents: any[] = []
@@ -1649,6 +1489,7 @@ function WorktableSection(props: any) {
   const [consoleName, setConsoleName] = useState('')
   const [consoleErr, setConsoleErr] = useState(false)
   const [consoleBusy, setConsoleBusy] = useState(false)
+  const consoleNeedsWorkspace = blankSessionNeedsWorkspace(sessionBridge?.sessions, consoleMode === 'none' ? 'none' : 'auto')
 
   /** 自定义布局弹窗（预设网格末尾的 ＋ 磁贴）：描述 → 复制提示词到剪贴板 */
   const [customOpen, setCustomOpen] = useState(false)
@@ -1697,32 +1538,14 @@ function WorktableSection(props: any) {
     const pr = projectsRef.current
     const snap = sessionsSnapshotStore.snapshot
     const byId: Record<string, any> = snap?.byId ?? {}
-    const jobsMap: Record<string, any[]> = snap?.jobsBySession ?? {}
     const now = Date.now()
-    const kidsSetOf = (sid: string): Set<string> => {
-      const set = new Set<string>()
-      for (const [cid, ce] of Object.entries<any>(byId)) if (ce?.parentId === sid) set.add(cid)
-      const v = (snap?.subagentsByParent ?? {})[sid]
-      const arr = Array.isArray(v) ? v : (v?.entries ?? v?.items ?? [])
-      if (Array.isArray(arr)) arr.forEach((c: any) => {
-        const cid = c?.sessionId ?? c?.id
-        if (typeof cid === 'string') set.add(cid)
-      })
-      return set
-    }
+    const kidsSetOf = (sid: string) => childSessionIdsOf(snap, sid)
     // 三态判定（同卡片提醒逻辑，但不过滤 ack——监控室永远显示事实状态）
     const statusOf = (sid: string | undefined): ConsoleCardData['status'] => {
       if (!sid) return 'idle'
       const e = byId[sid]
       if (!e) return 'idle'
-      if (sessionNotifyState(e) === 'need') return 'need'
-      for (const cid of kidsSetOf(sid)) {
-        if (byId[cid] && sessionNotifyState(byId[cid]) === 'need') return 'need'
-      }
-      try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.()
-        if (Array.isArray(face?.pending) && face.pending.length > 0) return 'need'
-      } catch {}
+      if (pendingAckForSession(sid) != null) return 'need'
       if (e.completed === true) return 'done'
       // 会话面兜底：宿主快照可能滞后或缺少完成字段
       try {
@@ -1732,39 +1555,17 @@ function WorktableSection(props: any) {
       if (e.running === true) return 'busy'
       return 'idle'
     }
-    // 运行时长：本会话正在运行的后台任务最早 startedAt 起算；无任务时读会话面 turnTimings 未结束轮次
+    // 运行时长：任务 startedAt → 新版 chat legacy.turnTimings → 旧会话面；未知不虚构。
     const runtimeOf = (sid: string | undefined): number | null => {
       if (!sid) return null
-      const e = byId[sid]
-      if (!e || e.running !== true) return null
-      let start: number | null = null
-      const jobs = jobsMap[sid] ?? []
-      for (const j of jobs) {
-        if (j?.status === 'running' && typeof j.startedAt === 'number' && (start == null || j.startedAt < start)) start = j.startedAt
-      }
-      if (start != null) return Math.max(0, now - start)
-      try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.()
-        const timings = face?.turnTimings
-        if (timings instanceof Map) {
-          for (const t of Array.from(timings.values()).reverse()) {
-            if (t && typeof t.startTime === 'number' && t.endTime == null) return Math.max(0, now - t.startTime)
-          }
-        } else if (timings && typeof timings === 'object') {
-          for (const k of Object.keys(timings).reverse()) {
-            const t = (timings as any)[k]
-            if (t && typeof t.startTime === 'number' && t.endTime == null) return Math.max(0, now - t.startTime)
-          }
-        }
-      } catch {}
-      return null
+      return sessionRuntimeMs(snap, sid, sessionBridge?.sessions, sessionConversationSource, now)
     }
     const ackMap = loadNotifyAck()
     const make = (id: string, name: string, icon: string, self: boolean): ConsoleCardData => {
       const sid = pr.projects.bindings[id]
       const status = statusOf(sid)
       // 发光 = 完成/待决且本轮未被确认；点卡片确认后熄灭
-      const glow = !!sid && ((status === 'done' && ackMap[sid] !== 'done') || (status === 'need' && ackMap[sid] !== 'need'))
+      const glow = !!sid && ((status === 'done' && ackMap[sid] !== 'done') || (status === 'need' && ackMap[sid] !== pendingAckForSession(sid)))
       return {
         id, name, icon,
         status,
@@ -1809,6 +1610,7 @@ function WorktableSection(props: any) {
   // 崩溃），改为 apply 里订阅 ctx.sessions.list 后写入模块级 store，此处直接读取。
   useEffect(() => {
     const env = {
+      fillHostInput: (text: string) => appendHostInput(sessionBridge, text),
       getScope: () => {
         const s = sessionScopeStore.snapshot
         return s ? { sessionId: s.sessionId, cwd: s.cwd } : null
@@ -1952,26 +1754,6 @@ function WorktableSection(props: any) {
           openMainSession(sid)
         },
       },
-      // 项目产物清单（widget-result.json）：分栏标题栏「📦」按钮的数据与动作
-      widgets: {
-        subscribe: (pid: string, fn: () => void) => {
-          let set = widgetListeners.get(pid)
-          if (!set) { set = new Set(); widgetListeners.set(pid, set) }
-          set.add(fn)
-          return () => {
-            const s = widgetListeners.get(pid)
-            if (!s) return
-            s.delete(fn)
-            if (s.size === 0) widgetListeners.delete(pid)
-          }
-        },
-        list: (pid: string) => listWidgetEntries(pid),
-        mount: (pid: string, index: number) => { void mountWidgetEntry(pid, index) },
-        products: (pid: string) => listProducts(pid),
-        mountProduct: (pid: string, key: string, row: string, paneIndex: number) => {
-          try { mountProductInto(pid, key, row, paneIndex) } catch {}
-        },
-      },
       projectSessions: {
         hasFolder: (pid: string) => !!projectsRef.current.projects.folders[pid],
         list: (pid: string, fallbackTitle: string) =>
@@ -2084,7 +1866,7 @@ function WorktableSection(props: any) {
     if (!splitStore.active) {
       if (!suppressRestoreRef.current) {
         const prev = projectAttachRef.sessionId
-        if (prev) openMainSession(prev)
+        if (prev) { try { openHostSession(clientCtx, sessionBridge?.sessions, prev) } catch {} }
       }
       projectAttachRef.sessionId = null
       projectAttachRef.attached = null
@@ -2103,7 +1885,14 @@ function WorktableSection(props: any) {
         return { ...prev, views: { ...prev.views, [spec.id]: spec } }
       })
     }
-    return () => { splitStore.onSpecMutated = null }
+    splitStore.onPaneContentEdited = (projectId, paneId) => {
+      widgetRegistry.revokePane(projectId, paneId)
+      for (const [id, p] of Object.entries(pendingMountRef.current)) {
+        if (p?.binding?.projectId === projectId && p.binding.paneId === paneId) delete pendingMountRef.current[id]
+      }
+      persistPendingWidgets()
+    }
+    return () => { splitStore.onSpecMutated = null; splitStore.onPaneContentEdited = null }
   }, [])
 
   // 分栏引擎 UI 文案（窗选择器等）
@@ -2316,23 +2105,10 @@ function buildCustomLayoutPrompt(req: string): string {
         })
       } catch { /* 联动失败不影响项目本身已经打开 */ }
       ackProjectNotify(spec.id)
-      // 补挂：此前项目未打开时暂存的产物（entries = 多窗口挂载列表），现在自动挂进各目标窗格；
-      // 全部落位成功记录指纹（供自愈扫挂去重）
-      const pending = pendingMountRef.current[spec.id]
-      if (pending) {
-        try {
-          const entries = Array.isArray(pending.entries)
-            ? pending.entries
-            : (pending.content ? [{ content: pending.content, row: pending.row, index: pending.index ?? 0 }] : [])
-          let allOk = entries.length > 0
-          for (const e of entries) {
-            splitStore.lockPane(e.row, e.index ?? 0, e.content)
-            if (!paneExists(splitStore.spec, e.row, e.index ?? 0)) allOk = false
-          }
-          if (allOk && pending.fingerprint) recordMountedWidget(spec.id, pending.fingerprint)
-        } catch {}
-        delete pendingMountRef.current[spec.id]
-        try { localStorage.setItem('dsh.worktable.pendingMount.v1', JSON.stringify(pendingMountRef.current)) } catch {}
+      // 读取失败保留 pending 供下次打开重试；成功挂载后才由 loader 清除。
+      for (const pending of Object.values(pendingMountRef.current)) {
+        if (pending?.binding?.projectId !== spec.id) continue
+        void applyWidgetManifest(pending.binding, null, true)
       }
     }
   }, [projects.views])
@@ -2348,16 +2124,16 @@ function buildCustomLayoutPrompt(req: string): string {
     splitStore.open(spec)
     if (splitStore.active && splitStore.spec?.id === CONSOLE_ID) {
       let prev: string | null = null
-      prev = currentMainSessionId() || null
+      try { prev = currentSessionOf(sessionBridge?.list?.getSnapshot?.()) || null } catch {}
       projectAttachRef.sessionId = prev
       const raw = explicitBound !== undefined ? explicitBound : projectsRef.current.projects.bindings[CONSOLE_ID]
       // 同上：控制室历史版本可能绑到了子代理会话 → 视为无绑定，避免每次打开都报「历史加载失败」
       const bound = raw && !isSubagentSessionId(raw) ? raw : null
       projectAttachRef.attached = bound ?? prev
-      if (bound) openMainSession(bound)
+      if (bound) { try { openHostSession(clientCtx, sessionBridge?.sessions, bound) } catch {} }
       ackProjectNotify(CONSOLE_ID)
       try { notifyConsole() } catch {}
-      // 打开即预热所有绑定会话的最近消息（冷会话走 history 只读通道）
+      // 打开即预热所有绑定会话的最近消息（新宿主临时持有，旧宿主 history）
       try { sweepPreviews() } catch {}
     }
   }, [projects.views, t])
@@ -2390,10 +2166,12 @@ function buildCustomLayoutPrompt(req: string): string {
     openConsole(sid)
   }
 
-  /** 强制绑定：新建空会话并绑定（分组同自定义窗：无 / 现有 / 新建） */
+  /** 新版空会话需显式分组才能输入；不能替用户改组或自动发送激活消息。 */
   const bindConsoleNew = async () => {
     const b = sessionBridge
     if (!b || typeof b.sessions?.create !== 'function') { setConsoleErr(true); return }
+    if (blankSessionNeedsWorkspace(b.sessions, consoleMode === 'none' ? 'none' : 'auto')) return
+    if (consoleMode === 'existing' && !consoleWsId) { setConsoleErr(true); return }
     if (consoleMode === 'new' && (!consoleParent.trim() || !consoleName.trim())) { setConsoleErr(true); return }
     setConsoleBusy(true); setConsoleErr(false)
     try {
@@ -2418,7 +2196,7 @@ function buildCustomLayoutPrompt(req: string): string {
       let createOpts: any = {}
       if (workspaceId) createOpts = { workspaceId }
       else if (folder) createOpts = { cwd: folder }
-      const sessionId = await b.sessions.create(createOpts)
+      const sessionId = await createHostSession(b.sessions, b.workspaces, createOpts, consoleMode === 'none' ? 'none' : 'auto')
       await ensureSessionPreset(sessionId) // 管理对话同样应用部署默认预设
       await ensureSessionModel(sessionId) // 管理对话同样修复失效 provider
       markPluginSessionOpen(sessionId)
@@ -2526,7 +2304,10 @@ function buildCustomLayoutPrompt(req: string): string {
     pickBusyRef.current = false
     setPickBusy(false)
     if (target === 'add') { setWsFolderParent(p); setWsFolderError(false) }
-    else if (bindPick) { persistProjects((prev) => ({ ...prev, folders: { ...prev.folders, [bindPick.id]: p } })) }
+    else if (bindPick) {
+      if (projectsRef.current.projects.folders[bindPick.id] !== p) invalidateWidgetProject(bindPick.id)
+      persistProjects((prev) => ({ ...prev, folders: { ...prev.folders, [bindPick.id]: p } }))
+    }
     setManualPathFor(null)
     setManualPathText('')
     setPickErr((prev) => ({ ...prev, [target]: '' }))
@@ -2536,12 +2317,14 @@ function buildCustomLayoutPrompt(req: string): string {
   const changeBindFolder = () => {
     if (!bindPick || pickBusyRef.current) return
     pickFolder('bind', (p) => {
+      if (projectsRef.current.projects.folders[bindPick.id] !== p) invalidateWidgetProject(bindPick.id)
       persistProjects((prev) => ({ ...prev, folders: { ...prev.folders, [bindPick.id]: p } }))
     })
   }
 
   /** 绑定 / 解绑会话（弹窗保持打开，绑定结果即时显示在「绑定对话」框里） */
   const setProjectBinding = (id: string, sessionId: string | null) => {
+    if ((projectsRef.current.projects.bindings[id] ?? null) !== sessionId) invalidateWidgetProject(id)
     persistProjects((prev) => {
       const next = { ...prev.bindings }
       if (sessionId) next[id] = sessionId
@@ -2591,251 +2374,84 @@ function buildCustomLayoutPrompt(req: string): string {
 
   // 项目表变化 → 控制室卡片刷新（打开中的面板即时更新）
   useEffect(() => { notifyConsole() }, [projects])
+  const [widgetTick, setWidgetTick] = useState(0)
+  useEffect(() => widgetRegistry.subscribe(() => setWidgetTick((n) => n + 1)), [])
 
-  /** 执行产物清单挂载：项目开着 → 锁定各「窗口N」；未开 → 待挂载（打开项目时补挂）。
-   *  清单支持单窗口对象（旧格式）与多窗口 JSON 数组（新格式，每元素 {window,path,kind}）。
-   *  rawManifest 传入时免二次读取（自愈扫挂先读原文做指纹去重）。全部落位成功后记录挂载指纹。 */
-  const applyWidgetManifest = useCallback(async (projectId: string, rawManifest: string | null): Promise<void> => {
-    const folder = projectsRef.current.projects.folders[projectId]
-    if (!folder) return
+  /** 只处理当前有效绑定。await 后与实际替换前重新查归属，窗口编号非法时不退到窗口1。 */
+  const applyWidgetManifest = useCallback(async (binding: WidgetBinding, rawManifest: string | null, force = false): Promise<void> => {
+    let current = widgetProjectOf(binding.projectId)
+    if (!mountedRef.current || !widgetRegistry.isCurrent(binding, current.spec, current.folder)) return
+    const readSeq = (widgetReadSeqRef.current[binding.bindingId] ?? 0) + 1
+    widgetReadSeqRef.current[binding.bindingId] = readSeq
     try {
       let raw = rawManifest
       if (raw == null) {
-        raw = await readWidgetManifest(projectId, folder, true)
+        const r = await fetch('/api/worktable/file?path=' + encodeURIComponent(widgetManifestPath(binding)), { cache: 'no-store' })
+        if (!r.ok) return
+        raw = (await r.text()).trim()
       }
-      if (!raw) return
-      let d: any = null
-      try { d = JSON.parse(raw) } catch {}
-      if (!d) return
-      const items = Array.isArray(d) ? d : [d]
-      const open = splitStore.active && splitStore.spec?.id === projectId
-      const saved = open ? splitStore.spec : (projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId))
-      // 逐项解析目标窗格；同窗格冲突时保留先出现者（防止把两个窗口压进同一个窗格互相覆盖）
-      const targets: { row: 'left' | 'top' | 'main'; index: number; content: any }[] = []
-      for (const it of items) {
-        if (!it) continue
-        const content = buildMountContent(folder, it)
-        if (!content) continue
-        const pane = windowLabelToPane(saved, it.window)
-        const row = pane?.row ?? 'main'
-        const index = pane?.index ?? 0
-        if (targets.some((t) => t.row === row && t.index === index)) continue
-        targets.push({ row, index, content })
-      }
-      if (!targets.length) { notifyWidgets(projectId); return }
-      notifyWidgets(projectId) // 📦 清单按钮据此出现/刷新
+      current = widgetProjectOf(binding.projectId)
+      if (!mountedRef.current || !raw || widgetReadSeqRef.current[binding.bindingId] !== readSeq) return
+      const resolved = widgetRegistry.resolve(binding, raw, current.spec, current.folder)
+      if (!resolved || (!force && mountedWidgetRef.current[binding.bindingId] === raw)) return
+      const content = buildMountContent(binding.folder, resolved.item)
+      if (!content) return
+      const open = splitStore.active && splitStore.spec?.id === binding.projectId
       if (open) {
-        // 项目开着：逐窗锁定；全部落位成功才记录指纹（有失败则留待下次自愈重试）
-        let allOk = true
-        for (const t of targets) {
-          splitStore.lockPane(t.row, t.index, t.content)
-          if (!paneExists(splitStore.spec, t.row, t.index)) allOk = false
-        }
-        if (allOk) recordMountedWidget(projectId, raw)
+        // 新标签 id 使同名 HTML 在下一次完成后重新加载；不会用 raw 指纹挡住追改。
+        splitStore.lockPane(resolved.target.row, resolved.target.index, content)
+        recordMountedWidget(binding.bindingId, raw)
+        delete pendingMountRef.current[binding.bindingId]
+        persistPendingWidgets()
       } else {
-        // 项目没开：按项目已保存的 spec 解析目标窗格，暂存，打开项目时锁死补挂
-        pendingMountRef.current[projectId] = { entries: targets, fingerprint: raw }
-        try { localStorage.setItem('dsh.worktable.pendingMount.v1', JSON.stringify(pendingMountRef.current)) } catch {}
+        pendingMountRef.current[binding.bindingId] = { binding }
+        persistPendingWidgets()
       }
-    } catch { /* 无清单文件 = 不挂载 */ }
+    } catch { /* 没有可验证的结果，不挂载旧目录的其他文件。 */ }
   }, [])
 
-  /** 自动挂载：绑定会话完成 → 读项目文件夹 widget-result.json → 产物自动挂进对应窗口 */
-  const tryAutoMount = useCallback(async (projectId: string, sid: string) => {
-    void sid
-    await applyWidgetManifest(projectId, null)
-    notifyWidgets(projectId)
-  }, [applyWidgetManifest])
-
-  /** 📦 产物清单：读项目清单并解析每条的展示名与「目标窗口是否存在」（供分栏标题栏按钮） */
-  const listWidgetEntries = useCallback(async (projectId: string): Promise<WidgetEntry[]> => {
-    const folder = projectsRef.current.projects.folders[projectId]
-    if (!folder) return []
-    const raw = await readWidgetManifest(projectId, folder)
-    if (!raw) return []
-    let d: any = null
-    try { d = JSON.parse(raw) } catch { return [] }
-    const items = Array.isArray(d) ? d : [d]
-    const open = splitStore.active && splitStore.spec?.id === projectId
-    const spec = open
-      ? splitStore.spec
-      : (projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId) ?? null)
-    const out: WidgetEntry[] = []
-    items.forEach((it: any, i: number) => {
-      if (!it) return
-      const content = buildMountContent(folder, it)
-      const pane = content ? windowLabelToPane(spec, it.window) : null
-      out.push({
-        index: i,
-        window: String(it?.window ?? ''),
-        title: widgetTitleOf(it),
-        kind: String(it?.kind ?? 'html'),
-        mountable: !!(pane && paneExists(spec, pane.row, pane.index)),
-      })
-    })
-    return out
-  }, [])
-
-  /** 📦 清单点一行：把该条产物挂到它声明的窗口（复用既有挂载路径与锁窗语义，可反复挂） */
-  const mountWidgetEntry = useCallback(async (projectId: string, index: number) => {
-    const folder = projectsRef.current.projects.folders[projectId]
-    if (!folder) return
-    const raw = widgetManifestCache.current[projectId]
-    if (!raw) return
-    let d: any = null
-    try { d = JSON.parse(raw) } catch { return }
-    const items = Array.isArray(d) ? d : [d]
-    const entry = items[index]
-    if (!entry) return
-    await applyWidgetManifest(projectId, JSON.stringify(entry))
-    // 单条挂载不该改变「整份清单」的指纹，否则自愈扫挂会误判「清单变了」而重挂全部窗口
-    recordMountedWidget(projectId, raw)
-  }, [applyWidgetManifest])
-
-  /** 本项目全部可选产物：清单优先（列全部条目、不限声明窗口）；无清单时扫项目文件夹 .html 兜底。
-   *  供窗格选择器直接挂到「本窗格」（AI学习 这类没有清单的项目也能选产物）。 */
-  const listProducts = useCallback(async (projectId: string): Promise<{ key: string; title: string; kind: string }[]> => {
-    const cached = productCache.current[projectId]
-    if (cached) return cached
-    const folder = projectsRef.current.projects.folders[projectId]
-    if (!folder) return []
-    const raw = await readWidgetManifest(projectId, folder)
-    let out: { key: string; title: string; kind: string }[] = []
-    if (raw) {
-      let d: any = null
-      try { d = JSON.parse(raw) } catch {}
-      const items = Array.isArray(d) ? d : (d ? [d] : [])
-      out = items
-        .map((it: any, i: number) => ({ key: 'm:' + i, title: widgetTitleOf(it), kind: String(it?.kind ?? 'html') }))
-        .filter((x) => !!x.title)
-    } else {
-      out = await scanHtmlProducts(folder)
-    }
-    productCache.current[projectId] = out
-    return out
-  }, [])
-
-  /** 把产物挂到**指定窗格**（lockPane 语义：该窗格锁定为该产物，可反复挂）；key 来自 listProducts() */
-  const mountProductInto = useCallback((projectId: string, key: string, row: string, paneIndex: number) => {
-    const folder = projectsRef.current.projects.folders[projectId]
-    if (!folder) return
-    let content: any = null
-    if (key.startsWith('m:')) {
-      let d: any = null
-      try { d = JSON.parse(widgetManifestCache.current[projectId] ?? 'null') } catch {}
-      const items = Array.isArray(d) ? d : (d ? [d] : [])
-      const it = items[Number(key.slice(2))]
-      if (it) content = buildMountContent(folder, it)
-    } else if (key.startsWith('f:')) {
-      const abs = key.slice(2)
-      if (abs) content = buildMountContent(folder, { path: abs, kind: 'html' })
-    }
-    if (!content) return
-    splitStore.lockPane(row as any, paneIndex, content)
-  }, [])
-
-  /** 存量救援（回填）：清单里指向「空窗格」的产物 → 登记为该窗格的可恢复项（只登记、不挂载）。
-   *  场景：用户把 AI 产物标签关掉了（指纹去重导致自愈不再补挂），选择器里应有一键恢复入口。 */
-  const seedRestoreFromManifest = useCallback((projectId: string, raw: string) => {
-    const folder = projectsRef.current.projects.folders[projectId]
-    if (!folder || !raw) return
-    let d: any = null
-    try { d = JSON.parse(raw) } catch { return }
-    const items = Array.isArray(d) ? d : [d]
-    // 项目开着：直接回填活 spec（选择器立刻出现恢复按钮）
-    if (splitStore.active && splitStore.spec?.id === projectId) {
-      for (const it of items) {
-        if (!it) continue
-        const content = buildMountContent(folder, it)
-        if (!content) continue
-        const pane = windowLabelToPane(splitStore.spec, it.window)
-        if (!pane) continue
-        splitStore.seedRestore(pane.row, pane.index, content)
-      }
-      return
-    }
-    // 项目没开：回填已保存的 spec，下次打开即生效
-    const saved = projectsRef.current.projects.views[projectId] ?? projectsRef.current.projects.layouts.find((l) => l.id === projectId)
-    if (!saved) return
-    let next = saved
-    for (const it of items) {
-      if (!it) continue
-      const content = buildMountContent(folder, it)
-      if (!content) continue
-      const pane = windowLabelToPane(saved, it.window)
-      if (!pane) continue
-      const seeded = seedPaneRestore(next, pane.row, pane.index, content)
-      if (seeded) next = seeded
-    }
-    if (next === saved) return
-    persistProjects((prev) => {
-      if (prev.layouts.some((l) => l.id === projectId)) return { ...prev, layouts: prev.layouts.map((l) => (l.id === projectId ? next : l)) }
-      return { ...prev, views: { ...prev.views, [projectId]: next } }
-    })
-  }, [])
-
-  // 完成事件 → 尝试自动挂载（一次完成只消费一次）
+  // 完成边沿只触发读取，不是成功证明；实际挂载仍要求有效 v2 结果。
   useEffect(() => {
     const byId = sessionsSnapshotStore.snapshot?.byId ?? {}
+    const scopePairs = new Map(widgetRegistry.entries().map((b) => [JSON.stringify([b.projectId, b.sessionId]), b]))
+    for (const key of mountConsumedRef.current) if (!scopePairs.has(key)) mountConsumedRef.current.delete(key)
     for (const [pid, sid] of Object.entries(projects.bindings)) {
       const e = byId[sid]
       if (!e) continue
       if (e.completed === true) {
-        // 新一次完成 → 清除旧 done ack，控制室绿光重新点亮（即使旧完成已被确认过）
         if (doneSeenRef.current[sid] !== true) clearNotifyAck(sid)
         doneSeenRef.current[sid] = true
-        if (!mountConsumedRef.current.has(sid)) {
-          mountConsumedRef.current.add(sid)
-          tryAutoMount(pid, sid)
-        }
       } else {
         doneSeenRef.current[sid] = false
-        mountConsumedRef.current.delete(sid)
       }
     }
-  }, [notifyTick, projects.bindings, tryAutoMount])
+    for (const [key, binding] of scopePairs) {
+      const e = byId[binding.sessionId]
+      if (!e) continue
+      if (e.completed !== true) { mountConsumedRef.current.delete(key); continue }
+      if (mountConsumedRef.current.has(key)) continue
+      mountConsumedRef.current.add(key)
+      for (const b of widgetRegistry.entries(binding.projectId)) {
+        if (b.sessionId === binding.sessionId) void applyWidgetManifest(b, null, true)
+      }
+    }
+  }, [notifyTick, projects.bindings, widgetTick, applyWidgetManifest])
 
-  // 自愈扫挂：插件加载 / 项目文件夹变化时，扫描每个项目的 widget-result.json 并落位
-  // （「完成事件」通道的兜底：事件丢失、绑定错位、完成时页面未加载等场景下仍能自动挂载；
-  //   按清单原文指纹去重——同清单不重复锁定，用户后续手动改窗口内容不会被覆盖）。
+  // 只扫描已明确登记的专属路径。新项目没有绑定，所以即使共用目录也保持空白。
   useEffect(() => {
     let cancelled = false
-    const folders = projects.folders ?? {}
     ;(async () => {
-      for (const pid of Object.keys(folders)) {
+      for (const binding of widgetRegistry.entries()) {
         if (cancelled) return
-        const folder = folders[pid]
-        if (!folder) continue
-        try {
-          const raw = await readWidgetManifest(pid, folder, true)
-          if (cancelled) return
-          if (!raw) { notifyWidgets(pid); continue }
-          seedRestoreFromManifest(pid, raw) // 空窗格 → 登记「可恢复项」（存量救援，只登记不挂载）
-          notifyWidgets(pid)                // 📦 清单按钮据此出现/刷新
-          if (mountedWidgetRef.current[pid] === raw) continue
-          await applyWidgetManifest(pid, raw)
-        } catch { /* 单项目失败不影响其余 */ }
+        await applyWidgetManifest(binding, null)
       }
     })()
     return () => { cancelled = true }
-  }, [projects.folders, applyWidgetManifest, seedRestoreFromManifest])
+  }, [projects.folders, widgetTick, applyWidgetManifest])
 
   /** 收集某会话的子代理 id 集：byId 的 parentId 标注 + subagentsByParent 目录双通道 */
   const collectKids = useCallback((sid: string): Set<string> => {
-    const kids = new Set<string>()
-    const snap = sessionsSnapshotStore.snapshot
-    const byId = snap?.byId ?? {}
-    for (const [cid, ce] of Object.entries<any>(byId)) {
-      if (ce?.parentId === sid) kids.add(cid)
-    }
-    const subMap = snap?.subagentsByParent ?? {}
-    const v = (subMap as any)[sid]
-    const arr = Array.isArray(v) ? v : (v?.entries ?? v?.items ?? [])
-    if (Array.isArray(arr)) arr.forEach((c: any) => {
-      const cid = c?.sessionId ?? c?.id
-      if (typeof cid === 'string') kids.add(cid)
-    })
-    return kids
+    return childSessionIdsOf(sessionsSnapshotStore.snapshot, sid)
   }, [])
 
   /** 项目 → 提醒态：绑定会话（含其子代理）待决(黄) > 完成(绿) > 工作中(蓝)；
@@ -2848,26 +2464,13 @@ function buildCustomLayoutPrompt(req: string): string {
     for (const [pid, sid] of Object.entries(projects.bindings)) {
       const e = byId[sid]
       if (!e) continue
-      // 是否需要判断：自身列表字段 / 子代理 / 会话面兜底，三通道聚合
-      let needNow = sessionNotifyState(e) === 'need'
-      if (!needNow) {
-        for (const cid of collectKids(sid)) {
-          const ce = byId[cid]
-          if (ce && sessionNotifyState(ce) === 'need') { needNow = true; break }
-        }
-      }
-      if (!needNow) {
-        try {
-          const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.()
-          if (Array.isArray(face?.pending) && face.pending.length > 0) needNow = true
-        } catch {}
-      }
+      const pendingAck = pendingAckForSession(sid)
       // 状态转移 → 清除旧 ack（新一轮待决重新点亮）
-      if (needNow !== seen[sid]) {
-        if (seen[sid] !== undefined) clearNotifyAck(sid)
-        seen[sid] = needNow
+      if (pendingAck !== seen[sid]) {
+        if (seen[sid] !== undefined) { clearNotifyAck(sid); delete ack[sid] }
+        seen[sid] = pendingAck
       }
-      if (needNow) { if (ack[sid] !== 'need') map[pid] = 'need'; continue }
+      if (pendingAck != null) { if (ack[sid] !== pendingAck) map[pid] = 'need'; continue }
       if (sessionNotifyState(e) === 'done' && ack[sid] !== 'done') { map[pid] = 'done'; continue }
       if (e.running === true) map[pid] = 'busy'
     }
@@ -2879,17 +2482,14 @@ function buildCustomLayoutPrompt(req: string): string {
     const sid = projectsRef.current.projects.bindings[projectId]
     if (!sid) return
     const byId = sessionsSnapshotStore.snapshot?.byId ?? {}
-    let needNow = sessionNotifyState(byId[sid]) === 'need'
+    const pendingAck = pendingAckForSession(sid)
     for (const cid of collectKids(sid)) {
-      if (sessionNotifyState(byId[cid]) === 'need') { needNow = true; saveNotifyAck(cid, 'need') }
+      if (sessionNotifyState(byId[cid]) === 'need') {
+        const childAck = pendingAckForSession(cid)
+        if (childAck != null) { saveNotifyAck(cid, childAck); notifyStateSeenRef.current[cid] = childAck }
+      }
     }
-    if (!needNow) {
-      try {
-        const face = sessionBridge?.sessions?.binding?.(sid)?.session?.getSnapshot?.()
-        if (Array.isArray(face?.pending) && face.pending.length > 0) needNow = true
-      } catch {}
-    }
-    if (needNow) saveNotifyAck(sid, 'need')
+    if (pendingAck != null) { saveNotifyAck(sid, pendingAck); notifyStateSeenRef.current[sid] = pendingAck }
     else {
       const st = sessionNotifyState(byId[sid])
       if (st === 'done') saveNotifyAck(sid, 'done')
@@ -2906,6 +2506,11 @@ function buildCustomLayoutPrompt(req: string): string {
     [registeredIds, projects.removed],
   )
   projectsRef.current = { projects, metas, aliveRegisteredIds }
+  widgetProjectOf = (id) => ({
+    folder: projectsRef.current.projects.folders[id],
+    spec: (splitStore.active && splitStore.spec?.id === id ? splitStore.spec : undefined) ??
+      projectsRef.current.projects.views[id] ?? projectsRef.current.projects.layouts.find((l) => l.id === id),
+  })
   projectBindingsRef.current = projects.bindings
   const allIds = useMemo(() => [...aliveRegisteredIds, ...layoutIds], [aliveRegisteredIds, layoutIds])
   const effectiveOrder = useMemo(() => {
@@ -3051,12 +2656,14 @@ function buildCustomLayoutPrompt(req: string): string {
   }
 
   const removeLayout = (id: string) => {
+    invalidateWidgetProject(id)
     persistProjects((prev) => ({ ...prev, layouts: prev.layouts.filter((l) => l.id !== id) }))
   }
 
   // ── 变更视图：所有项目通用。布局项目 = 重建其布局条目；入驻项目 = 建立/更新视图覆盖。
   // 现有窗内容（标签）按序迁入新拓扑，不丢失。 ──
   const applyLayoutChange = (id: string, presetId: string) => {
+    invalidateWidgetProject(id)
     const layout = projects.layouts.find((l) => l.id === id)
     const meta = metas[id]
     const current = layout ?? projects.views[id]
@@ -3092,6 +2699,7 @@ function buildCustomLayoutPrompt(req: string): string {
   // 「工作台」控制室项目不可删除（界面不提供入口，这里兜底拒绝）
   const removeProject = (id: string) => {
     if (id === CONSOLE_ID) return
+    invalidateWidgetProject(id)
     persistProjects((prev) => {
       const next = {
         ...prev,
@@ -3595,7 +3203,7 @@ function buildCustomLayoutPrompt(req: string): string {
                 </button>
                 <button type="button" className="dsh-wt_updateBtn" onClick={skipUpdate}>{t('update.skip')}</button>
               </div>
-              <div className="dsh-wt_updateHint">{t('update.upgradeHint')}</div>
+              <div className="dsh-wt_updateHint">{t(DESKTOP_HOST ? 'update.upgradeHintDesktop' : 'update.upgradeHint')}</div>
             </div>
           )}
           <div className="dsh-wt_manageHead">
@@ -3879,6 +3487,7 @@ function buildCustomLayoutPrompt(req: string): string {
               </select>
               {consoleMode === 'existing' && (
                 <select className="dsh-wt_consoleSelect" value={consoleWsId} onChange={(e) => setConsoleWsId(e.target.value)}>
+                  <option value="">{t('console.chooseGroup')}</option>
                   {listWorkspaces().map((w) => <option key={w.id} value={w.id}>{w.title}</option>)}
                 </select>
               )}
@@ -3888,8 +3497,9 @@ function buildCustomLayoutPrompt(req: string): string {
                   <input className="dsh-wt_consoleInput" placeholder={t('console.newNamePh')} value={consoleName} onChange={(e) => setConsoleName(e.target.value)} />
                 </>
               )}
-              {consoleErr && <p className="dsh-wt_consoleErr">{t('console.bindFail')}</p>}
-              <button type="button" className="dsh-wt_consoleCreateBtn" disabled={consoleBusy} onClick={bindConsoleNew}>
+              {consoleNeedsWorkspace && <p className="dsh-wt_consoleHint">{t('console.blankNeedsGroup')}</p>}
+              {consoleErr && !consoleNeedsWorkspace && <p className="dsh-wt_consoleErr">{t('console.bindFail')}</p>}
+              <button type="button" className="dsh-wt_consoleCreateBtn" disabled={consoleBusy || consoleNeedsWorkspace || (consoleMode === 'existing' && !consoleWsId)} onClick={bindConsoleNew}>
                 {consoleBusy ? '…' : t('console.createBind')}
               </button>
             </div>
@@ -4046,7 +3656,7 @@ export function apply(ctx: any) {
   clientCtx = ctx
   try { hostApi = ctx.get?.('connection')?.api ?? null } catch { hostApi = null }
   try { (window as any).__dshHostApi = hostApi } catch {}
-  try { (window as any).__dshOpenSession = (id: string) => openMainSession(id); (window as any).__dshCurrentMainSession = () => currentMainSessionId(); (window as any).__dshUiWorkspace = () => { try { return ctx.get?.('uiWorkspace') ?? null } catch { return null } }; (window as any).__dshSessions = ctx.sessions; (window as any).__dshPromptIntoSession = (id: string, text: string) => promptIntoSession(id, text); (window as any).__dshWorkspaces = ctx.workspaces; (window as any).__dshBuildWindowTaskText = buildWindowTaskText; (window as any).__dshSyncSessionScope = () => syncSessionScope(sessionBridge?.list) } catch {}
+  try { (window as any).__dshOpenSession = (id: string) => openHostSession(ctx, ctx.sessions, id); (window as any).__dshSessions = ctx.sessions; (window as any).__dshPromptIntoSession = (id: string, text: string) => promptIntoSession(id, text); (window as any).__dshWorkspaces = ctx.workspaces; (window as any).__dshBuildWindowTaskText = buildWindowTaskText; (window as any).__dshSyncSessionScope = () => syncSessionScope(sessionBridge?.list); (window as any).__dshCurrentMainSession = () => currentMainSessionId() } catch {}
 
 
   ctx.effect(() => {
@@ -4105,17 +3715,32 @@ export function apply(ctx: any) {
   // 会话作用域（当前会话 cwd 与后台任务）→ 功能窗数据源
   const sessionsList = ctx.sessions?.list
   if (sessionsList && typeof sessionsList.getSnapshot === 'function') {
+    adaptSessionSnapshot = createSessionSnapshotAdapter()
     syncSessionScope(sessionsList)
     const disposeScope = sessionsList.subscribe(() => syncSessionScope(sessionsList))
     ctx.effect(() => disposeScope, 'dsh-worktable: session scope watch')
+    // Optional dependency: older DSH hosts have no uiSession service.
+    ctx.inject(['uiSession'], (statusCtx: any) => {
+      const source = statusCtx.uiSession?.sessionStatus
+      if (!source?.getSnapshot || !source?.subscribe) return
+      sessionStatusSource = source
+      syncSessionScope(sessionsList)
+      const disposeStatus = source.subscribe(() => syncSessionScope(sessionsList))
+      statusCtx.effect(() => () => {
+        disposeStatus()
+        if (sessionStatusSource === source) sessionStatusSource = null
+      }, 'dsh-worktable: session status watch')
+    })
+    // Optional read-only timer source; getting a snapshot does not activate a chat target.
+    ctx.inject(['uiConversation'], (conversationCtx: any) => {
+      const source = conversationCtx.uiConversation
+      if (typeof source?.binding !== 'function') return
+      sessionConversationSource = source
+      conversationCtx.effect(() => () => {
+        if (sessionConversationSource === source) sessionConversationSource = null
+      }, 'dsh-worktable: conversation timer source')
+    })
   }
-
-  // 0.1.6：主视图会话在 uiWorkspace.selection 里，切换不一定经 sessions.list 通知 → 补订阅一条
-  mainSessionWatchRef.list = sessionsList
-  ctx.effect(() => {
-    ensureMainSessionWatch()
-    return () => { try { mainSessionWatchDispose?.() } catch {} ; mainSessionWatchDispose = null }
-  }, 'dsh-worktable: main session watch')
 
   // 分栏工作区浮层（M1 通用引擎，shell.overlay 座位）
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
@@ -4152,5 +3777,7 @@ try {
     planProjectsLoad,
     projectsBackupWrite,
     projectsBackupHeal,
+    openMainSession,
+    currentMainSessionId,
   }
 } catch {}

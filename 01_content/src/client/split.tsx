@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { parentPathOf } from './pathutil'
+import { hostWebSocketUrl, worktableUpgrade } from './hostTransport'
 import { CHANGELOG_V030 } from './changelog'
 import { LOCAL_VERSION, checkUpdate, getAutoCheck, readCache, setAutoCheck as storeAutoCheck, setSkipVersion, type UpdateInfo, type UpdateStatus } from './updateCheck'
 import { Terminal } from 'xterm'
@@ -104,6 +105,8 @@ type SplitState = {
   lastMarginRight: string
   lastMarginTop: string
   onSpecMutated: ((spec: LayoutSpec) => void) | null
+  /** Manual edits revoke that pane's automatic result binding; lockPane itself does not. */
+  onPaneContentEdited: ((projectId: string, paneId: string) => void) | null
   listeners: Set<() => void>
   open(spec: LayoutSpec): boolean
   close(): void
@@ -125,7 +128,6 @@ type SplitState = {
   /** 恢复该窗格最近关闭的标签（原样放回：原 id/标题/内容）；不在历史里 = 无操作 */
   restoreClosedTab(row: PaneRow, i: number, tabId: string): void
   /** 存量救援回填：把内容登记为该空窗格的可恢复项（只登记不挂载、不覆盖非空窗格） */
-  seedRestore(row: PaneRow, i: number, content: SplitContent): void
   setActiveTab(row: PaneRow, i: number, tabId: string): void
   toggleCollapsed(row: PaneRow, i: number): void
   moveTab(fromRow: PaneRow, fromI: number, tabId: string, toRow: PaneRow, toI: number): void
@@ -235,24 +237,13 @@ export type ConsoleCardData = {
   glow: boolean
 }
 
-/** 项目产物清单条目（index.tsx 读 widget-result.json 组装；引擎只渲染与派发动作） */
-export type WidgetEntry = {
-  /** 清单里的下标（mount 时回传） */
-  index: number
-  /** 清单声明的目标窗口（「窗口N」） */
-  window: string
-  /** 展示名（产物文件名 / 网址） */
-  title: string
-  kind: string
-  /** 目标窗口在当前布局里是否存在（不存在 = 置灰） */
-  mountable: boolean
-}
 
 /** 弹层一行：会话 id/标题 + 是否当前项 */
 export type ProjectSessionRow = { id: string; title: string; current: boolean }
 
 
 type SplitEnv = {
+  fillHostInput: (text: string) => boolean
   getScope: () => SplitScope | null
   getJobs: () => SplitJob[]
   getSubagents: () => any[]
@@ -315,19 +306,6 @@ type SplitEnv = {
     setGlowHsl: (v: { h: number; s: number; l: number }) => void
     getPhotoHsl: () => { h: number; s: number; l: number }
     setPhotoHsl: (v: { h: number; s: number; l: number }) => void
-  }
-  /** 项目产物清单（项目文件夹里的 widget-result.json）：分栏标题栏「📦」按钮的数据与动作 */
-  widgets?: {
-    /** 读清单（带缓存；项目未设文件夹/无清单 = 空数组） */
-    list: (projectId: string) => Promise<WidgetEntry[]>
-    /** 清单变化通知（自愈扫挂/自动挂载后触发，按钮据此出现/刷新） */
-    subscribe: (projectId: string, fn: () => void) => () => void
-    /** 把清单第 index 条产物挂到它声明的窗口（沿用既有锁窗语义，可反复挂） */
-    mount: (projectId: string, index: number) => void
-    /** 本项目全部可选产物（清单优先；无清单时扫项目文件夹的 .html 兜底）——窗格选择器直接挂到本窗格 */
-    products: (projectId: string) => Promise<{ key: string; title: string; kind: string }[]>
-    /** 把产物挂到**指定窗格**（lockPane 语义；key 来自 products()） */
-    mountProduct: (projectId: string, key: string, row: string, paneIndex: number) => void
   }
   /** 项目会话（分栏标题栏「💬」按钮的数据与动作；项目未设文件夹 = 整块不渲染） */
   projectSessions?: {
@@ -549,8 +527,7 @@ function boxPayload(x0: number, y0: number, x1: number, y1: number): { primary: 
 }
 
 /** 更新方法：复制给 AI 的升级指令（插件不自更新；升级由用户或其 Agent 执行 + 重启） */
-const UPGRADE_CMD = 'dsh plugin --profile web add "https://github.com/Aisland-SJL/dsh-worktable/releases/latest/download/dsh-worktable.tgz"'
-const UPGRADE_AI = '帮我升级 dsh-worktable：执行 ' + UPGRADE_CMD + '，完成后提醒我重启 dsh web 并刷新页面'
+const { prompt: UPGRADE_AI } = worktableUpgrade()
 
 async function copyTextSafe(text: string): Promise<boolean> {
   try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true } } catch {}
@@ -567,25 +544,7 @@ async function copyTextSafe(text: string): Promise<boolean> {
 
 /** 注入宿主对话框输入框（不发送）；失败返回 false */
 function fillHostInput(text: string): boolean {
-  try {
-    const ta = document.querySelector<HTMLTextAreaElement>('textarea[data-phase]')
-      ?? Array.from(document.querySelectorAll<HTMLTextAreaElement>('textarea')).pop()
-    if (!ta) return false
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
-    // 连续标注：已有内容不顶掉，换行追加（用户可以同一对话连续标注多处）
-    const next = ta.value && ta.value.trim() ? ta.value + '\n\n' + text : text
-    if (setter) setter.call(ta, next)
-    else ta.value = next
-    ta.dispatchEvent(new Event('input', { bubbles: true }))
-    try {
-      ta.focus()
-      ta.dispatchEvent(new Event('change', { bubbles: true }))
-      ta.setSelectionRange(ta.value.length, ta.value.length)
-    } catch {}
-    return true
-  } catch {
-    return false
-  }
+  return splitEnv?.fillHostInput(text) ?? false
 }
 
 /** ✓ 确认：打包并注入，不发送 */
@@ -820,28 +779,6 @@ window.addEventListener('dsh:split-claim', ((e: any) => {
   if (splitStore.active && id && id !== splitStore.spec?.id) splitStore.close()
 }) as EventListener)
 
-/** 存量救援回填（纯函数）：把 content 登记为指定窗格的「可恢复项」。
- *  仅当窗格存在、当前没有标签、且历史里没有同内容时返回新 spec；否则返回 null（调用方跳过持久化）。 */
-export function seedPaneRestore(spec: LayoutSpec, row: PaneRow, i: number, content: SplitContent): LayoutSpec | null {
-  const pane = row === 'left'
-    ? (i === 0 ? (spec.left ?? null) : null)
-    : (row === 'top' ? ((spec.top ?? [])[i] ?? null) : ((spec.main ?? [])[i] ?? null))
-  if (!pane) return null
-  if ((pane.tabs ?? []).length > 0) return null
-  const closed = pane.closedTabs ?? []
-  if (closed.some((t) => sameContent(t.content, content))) return null
-  const tab: PaneTab = { id: 't' + Date.now().toString(36), title: tabTitleOf(content), content }
-  const nextPane: SplitPane = { ...pane, closedTabs: [tab, ...closed].slice(0, CLOSED_TAB_CAP) }
-  if (row === 'left') return { ...spec, left: nextPane }
-  if (row === 'top') {
-    const top = [...(spec.top ?? [])]
-    top[i] = nextPane
-    return { ...spec, top }
-  }
-  const main = [...spec.main]
-  main[i] = nextPane
-  return { ...spec, main }
-}
 
 export const splitStore: SplitState = {
   active: false,
@@ -868,6 +805,7 @@ export const splitStore: SplitState = {
   lastMarginRight: '',
   lastMarginTop: '',
   onSpecMutated: null,
+  onPaneContentEdited: null,
   listeners: new Set(),
 
   open(spec) {
@@ -1197,7 +1135,7 @@ export const splitStore: SplitState = {
   lockPane(row, i, content) {
     const spec = this.spec
     if (!spec) return
-    const tab: PaneTab = { id: 't' + Date.now().toString(36), title: tabTitleOf(content), content, active: 0 }
+    const tab: PaneTab = { id: 't' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2), title: tabTitleOf(content), content, active: 0 }
     const mutate = (pane: SplitPane): SplitPane => ({ ...pane, content: null, tabs: [tab], active: 0 })
     if (row === 'left') {
       if (!spec.left || i !== 0) return
@@ -1222,6 +1160,8 @@ export const splitStore: SplitState = {
   setTabContent(row, index, tabId, content) {
     const spec = this.spec
     if (!spec) return
+    const edited = row === 'left' ? spec.left : row === 'top' ? spec.top?.[index] : spec.main[index]
+    if (edited?.tabs?.some((t) => t.id === tabId)) this.onPaneContentEdited?.(spec.id, edited.id)
     const mutate = (pane: SplitPane): SplitPane => {
       const tabs = (pane.tabs ?? []).map((t) => (t.id === tabId ? { ...t, content, title: tabTitleOf(content) } : t))
       return { ...pane, tabs }
@@ -1242,6 +1182,8 @@ export const splitStore: SplitState = {
   openTab(row, i, content) {
     const spec = this.spec
     if (!spec) return
+    const edited = row === 'left' ? spec.left : row === 'top' ? spec.top?.[i] : spec.main[i]
+    if (edited) this.onPaneContentEdited?.(spec.id, edited.id)
     const mutate = (pane: SplitPane): SplitPane => {
       const tabs = [...(pane.tabs ?? [])]
       // 去重：同内容已有标签 → 直接激活
@@ -1298,6 +1240,8 @@ export const splitStore: SplitState = {
   closeTab(row, i, tabId) {
     const spec = this.spec
     if (!spec) return
+    const edited = row === 'left' ? spec.left : row === 'top' ? spec.top?.[i] : spec.main[i]
+    if (edited?.tabs?.some((t) => t.id === tabId)) this.onPaneContentEdited?.(spec.id, edited.id)
     const mutate = (pane: SplitPane): SplitPane => {
       const list = pane.tabs ?? []
       const removed = list.find((t) => t.id === tabId)
@@ -1336,17 +1280,6 @@ export const splitStore: SplitState = {
     this.notify()
   },
 
-  /** 存量救援回填（活 spec 通道）：把产物登记为空窗格的可恢复项（只登记不挂载） */
-  seedRestore(row, i, content) {
-    const spec = this.spec
-    if (!spec) return
-    const next = seedPaneRestore(spec, row, i, content)
-    if (!next) return
-    this.spec = next
-    this.onSpecMutated?.(this.spec)
-    this.persist()
-    this.notify()
-  },
 
   moveTab(fromRow, fromI, tabId, toRow, toI) {
     const spec = this.spec
@@ -1363,6 +1296,8 @@ export const splitStore: SplitState = {
     if (!fromPane || !toPane) return
     const tab = (fromPane.tabs ?? []).find((t) => t.id === tabId)
     if (!tab) return
+    this.onPaneContentEdited?.(spec.id, fromPane.id)
+    this.onPaneContentEdited?.(spec.id, toPane.id)
     const fromTabs = (fromPane.tabs ?? []).filter((t) => t.id !== tabId)
     const toTabs = [...(toPane.tabs ?? []), tab]
     const setPane = (row: PaneRow, i: number, pane: SplitPane) => {
@@ -2636,9 +2571,8 @@ function TerminalPane() {
     focusTerm()
     el.addEventListener('pointerdown', focusTerm)
     const scope = splitEnv?.getScope?.()
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = proto + '//' + location.host + '/api/worktable/term?sessionId=' + encodeURIComponent(scope?.sessionId ?? '') + '&cwd=' + encodeURIComponent(scope?.cwd ?? '') + '&cols=80&rows=24'
     try {
+      const url = hostWebSocketUrl('/api/worktable/term?sessionId=' + encodeURIComponent(scope?.sessionId ?? '') + '&cwd=' + encodeURIComponent(scope?.cwd ?? '') + '&cols=80&rows=24')
       ws = new WebSocket(url)
     } catch {
       term.dispose()
@@ -2841,8 +2775,9 @@ function SelectPop(props: {
 }
 
 /** 自定义窗口：居中对话框。两种模式：新建专属会话 / 发送到已有会话（默认当前会话）。 */
-function CustomPane(props: { paneTitle?: string }) {
-  const paneTitle = props.paneTitle ?? ''
+function CustomPane(props: { paneTitle?: string; row?: PaneRow; index?: number }) {
+  const paneTitle = props.row === undefined ? (props.paneTitle ?? '') :
+    (windowLabelOf(props.row, props.index ?? 0).match(/^窗口\d+/)?.[0] ?? '')
   try { (window as any).__dshLastCustomPaneTitle = paneTitle } catch {}
   const custom = splitEnv?.custom
   const [requirement, setRequirement] = useState('')
@@ -2855,6 +2790,7 @@ function CustomPane(props: { paneTitle?: string }) {
   const [wsGroups, setWsGroups] = useState<{ id: string; title: string; path: string }[]>([])
   const [groupMode, setGroupMode] = useState<'none' | 'existing' | 'new'>('none')
   const [groupId, setGroupId] = useState<string | null>(null)
+  const groupTouchedRef = useRef(false)
   const [newGroupParent, setNewGroupParent] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -2874,7 +2810,8 @@ function CustomPane(props: { paneTitle?: string }) {
       setSessionId(flat.find((s) => s.isCurrent)?.id ?? flat[0]?.id ?? null)
       const curId = flat.find((s) => s.isCurrent)?.id
       const home = curId ? (custom?.getWorkspaces?.() ?? []).find((w) => (w.sessionIds ?? []).includes(curId)) : null
-      if (home) { setGroupMode('existing'); setGroupId(home.id) }
+      // A delayed default lookup must not overwrite the user's explicit choice.
+      if (home && !groupTouchedRef.current) { setGroupMode('existing'); setGroupId(home.id) }
     }).catch(() => { setSessionGroups([]) })
   }, [custom])
   const submit = async () => {
@@ -2975,6 +2912,7 @@ function CustomPane(props: { paneTitle?: string }) {
               }]}
               placeholder={T('custom.group')}
               onChange={(id) => {
+                groupTouchedRef.current = true
                 if (id === '__none') setGroupMode('none')
                 else if (id === '__new') setGroupMode('new')
                 else { setGroupMode('existing'); setGroupId(id) }
@@ -3032,7 +2970,7 @@ function PaneTabBody(props: { tab: PaneTab; row: PaneRow; index: number; paneTit
   if (content.type === 'scm') return <GitPane />
   if (content.type === 'tasks') return <JobsPane />
   if (content.type === 'terminal') return <TerminalPane />
-  if (content.type === 'custom') return <CustomPane paneTitle={props.paneTitle ?? ''} />
+  if (content.type === 'custom') return <CustomPane paneTitle={props.paneTitle ?? ''} row={props.row} index={props.index} />
   return (
     <div className="dsh-wt_paneWip">
       <span className="dsh-wt_paneWipIcon" aria-hidden>{BUILTIN_ICONS[content.type]}</span>
@@ -3112,23 +3050,7 @@ function PaneBody(props: { pane: SplitPane; row: PaneRow; index: number; project
  *  按钮固定大小、整体居中；按窗位宽高比自适应排列：宽窗横排 4 连 / 方窗 2×2 / 竖窗竖排。 */
 function PanePicker(props: { pane: SplitPane; row: PaneRow; index: number; projectId: string }) {
   const [mode, setMode] = useState<'row' | 'grid' | 'col'>('grid')
-  const [products, setProducts] = useState<{ key: string; title: string; kind: string }[]>([])
   const hostRef = useRef<HTMLDivElement | null>(null)
-  // 本项目可选产物（清单优先；无清单时项目文件夹 .html 兜底）：点一下挂到**本窗格**
-  useEffect(() => {
-    let alive = true
-    const load = () => {
-      const p = splitEnv?.widgets?.products?.(props.projectId)
-      if (!p) { setProducts([]); return }
-      Promise.resolve(p)
-        .then((l) => { if (alive) setProducts((l ?? []).slice(0, PRODUCT_SHOW)) })
-        .catch(() => { if (alive) setProducts([]) })
-    }
-    load()
-    let un: (() => void) | undefined
-    try { un = splitEnv?.widgets?.subscribe?.(props.projectId, load) } catch {}
-    return () => { alive = false; try { un?.() } catch {} }
-  }, [props.projectId])
   useEffect(() => {
     const el = hostRef.current
     if (!el) return
@@ -3164,22 +3086,6 @@ function PanePicker(props: { pane: SplitPane; row: PaneRow; index: number; proje
           ))}
         </div>
       )}
-      {products.length > 0 && (
-        <div className="dsh-wt_paneRestore">
-          {products.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              className="dsh-wt_paneRestoreBtn dsh-wt_paneProductBtn"
-              title={T('pane.productTitle', { name: p.title })}
-              onClick={() => { try { splitEnv?.widgets?.mountProduct(props.projectId, p.key, props.row, props.index) } catch {} }}
-            >
-              <span aria-hidden>📦</span>
-              <span className="dsh-wt_paneRestoreName">{T('pane.products')}：{p.title}</span>
-            </button>
-          ))}
-        </div>
-      )}
       <div ref={hostRef} className={'dsh-wt_panePicker dsh-wt_panePicker-' + mode}>
         <button type="button" className="dsh-wt_panePick" onClick={() => pick({ kind: 'builtin', type: 'browser' })}>
           <span aria-hidden>🌐</span>{T('pane.browser')}
@@ -3201,55 +3107,6 @@ function PanePicker(props: { pane: SplitPane; row: PaneRow; index: number; proje
   )
 }
 
-/** 分栏标题栏「📦 产物」：列项目文件夹里 widget-result.json 的产物，点一行重挂到它声明的窗口。
- *  清单为空 → 整块不渲染（零 UI 噪音）；数据与动作由工作台经 env.widgets 注入（引擎不含业务）。 */
-function WidgetMenu(props: { projectId: string }) {
-  const [items, setItems] = useState<WidgetEntry[] | null>(null)
-  const [open, setOpen] = useState(false)
-  const refresh = useCallback(() => {
-    const p = splitEnv?.widgets?.list(props.projectId)
-    if (!p) { setItems([]); return }
-    Promise.resolve(p).then((l) => setItems(l ?? [])).catch(() => setItems([]))
-  }, [props.projectId])
-  useEffect(() => {
-    refresh()
-    let un: (() => void) | undefined
-    try { un = splitEnv?.widgets?.subscribe?.(props.projectId, refresh) } catch {}
-    return () => { try { un?.() } catch {} }
-  }, [refresh])
-  if (!items || items.length === 0) return null
-  return (
-    <>
-      <button
-        type="button"
-        className="dsh-wt_widgetBtn"
-        title={T('widget.list')}
-        aria-label={T('widget.list')}
-        aria-expanded={open}
-        onClick={() => { setOpen((v) => !v); refresh() }}
-      >📦</button>
-      {open && (
-        <div className="dsh-wt_widgetPop" role="menu">
-          <div className="dsh-wt_widgetHead">{T('widget.title')}</div>
-          {items.map((it) => (
-            <button
-              key={it.index}
-              type="button"
-              role="menuitem"
-              className="dsh-wt_widgetRow"
-              disabled={!it.mountable}
-              title={it.mountable ? it.title : T('widget.noPane')}
-              onClick={() => { try { splitEnv?.widgets?.mount(props.projectId, it.index) } catch {} ; setOpen(false) }}
-            >
-              <span className="dsh-wt_widgetWin">{it.window}</span>
-              <span className="dsh-wt_widgetName">{it.title}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </>
-  )
-}
 
 /** 分栏标题栏「💬 会话」：列本项目会话 + 新建（数据与动作由工作台经 env.projectSessions 注入，引擎不含业务）。
  *  项目未设文件夹 → 整块不渲染（与 📦 的"无数据不渲染"一致）。 */
@@ -3452,7 +3309,6 @@ function WorkspaceLayer(props: { spec: LayoutSpec; geom: Geom | null; chatW: num
       {/* 标题栏 */}
       <div className="dsh-wt_splitBar" style={{ position: 'fixed', left: g.left, top: barTop, width: hasLeft || chatFull ? contentW : (hasTop ? colW : contentW), zIndex: 70 }}>
         {spec.id !== 'wt-console' && <span className="dsh-wt_splitTitle">{spec.title}</span>}
-        <WidgetMenu projectId={spec.id} />
         {/* 控制室不加会话入口（它的会话入口是绑定弹窗）；未设文件夹的项目由组件自身不渲染 */}
         {spec.id !== 'wt-console' && <ProjectSessionsMenu projectId={spec.id} />}
         {!hasLeft && (
@@ -3614,6 +3470,6 @@ function SplitWorkspace() {
 
 /** 调试出口（自动化验证用；必须在 store 定义之后）。合并写入：consoleEdit 的纯函数先于本模块体
  *  装载（本文件 import 它），整体覆盖会把它们冲掉，故必须展开既有对象。 */
-try { const w = window as any; w.__dshWorktable = { ...(w.__dshWorktable ?? {}), splitStore, seedPaneRestore } } catch {}
+try { const w = window as any; w.__dshWorktable = { ...(w.__dshWorktable ?? {}), splitStore } } catch {}
 
 export { SplitWorkspace }
