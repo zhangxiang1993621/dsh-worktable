@@ -3041,7 +3041,17 @@ function PaneBody(props: { pane: SplitPane; row: PaneRow; index: number; project
         })}
       </div>
       )}
-      <PaneTabBody tab={tabs[active]} row={row} index={index} paneTitle={pane.title} reloadKey={reloadKeys[tabs[active].id] ?? 0} />
+      {/* 所有标签都保持挂载，只切换显示：若只渲染活动标签，切标签会卸载 iframe，
+          导致窗内页面被重新加载（工作台里的资源监控/终端等会因此丢会话与状态）。 */}
+      {tabs.map((t, i) => (
+        <div
+          key={t.id}
+          className={'dsh-wt_tabBody' + (i === active ? '' : ' dsh-wt_tabBodyOff')}
+          aria-hidden={i === active ? undefined : true}
+        >
+          <PaneTabBody tab={t} row={row} index={index} paneTitle={pane.title} reloadKey={reloadKeys[t.id] ?? 0} />
+        </div>
+      ))}
     </>
   )
 }

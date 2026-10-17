@@ -172,6 +172,9 @@ export const css = xtermCss + '\n' + [
   '.dsh-wt_annotNo:hover{background:#c0392b;color:#fff}',
   '.dsh-wt_collapseBtnCollapsed{color:var(--dsw-alias-label-secondary,#9aa4b2)}',
   '.dsh-wt_paneFrame{flex:1;width:100%;border:0;background:#010409;min-height:0}',
+  // 窗内标签页容器：非活动标签用 display:none 隐藏（不卸载），iframe 才不会重载
+  '.dsh-wt_tabBody{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}',
+  '.dsh-wt_tabBodyOff{display:none}',
   // iframe 内容标签：容器 + 右上角常驻刷新按钮
   '.dsh-wt_tabRefresh{flex:none;width:14px;height:14px;padding:0;border:none;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary,#6e7683);font-size:10px;line-height:1;cursor:pointer}',
   '.dsh-wt_tabRefresh:hover{color:var(--dsw-alias-state-accent-primary,#4f8ef7);background:var(--dsw-alias-fill-l1,rgba(255,255,255,.08))}',
