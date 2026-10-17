@@ -8,3 +8,6 @@ Thumbs.db
 
 
 dist/
+
+# 本地内部文档：安全审计报告等不入库（仅保留本地文件）
+02_process/audit/
