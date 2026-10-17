@@ -11,3 +11,5 @@ dist/
 
 # 本地内部文档：安全审计报告等不入库（仅保留本地文件）
 02_process/audit/
+02_process/drafts/2026-09-24-project-session-switch-design.md
+02_process/drafts/2026-09-24-project-session-switch-plan.md
